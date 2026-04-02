@@ -1,68 +1,144 @@
-import MenuBar from "../components/MenuBar";
-import PromptList from "../components/PromptList";
-import PromptEditor from "../components/PromptEditor";
-import ExecutionHistory from "../components/ExecutionHistory";
+import { useEffect, useState } from "react";
 
-import { useNotebook } from "../state/useNotebook";
+// Bridge helper
+type VSCodeApi = {
+  postMessage: (msg: { type: string; payload: unknown }) => void;
+};
+
+function sendMessage(type: string, payload: unknown) {
+  const vscode = (window as unknown as { acquireVsCodeApi?: () => VSCodeApi })
+    .acquireVsCodeApi?.();
+
+  if (!vscode) {
+    console.warn("VSCode API not available");
+    return;
+  }
+
+  vscode.postMessage({ type, payload });
+}
 
 export default function App() {
-  const {
-    prompts,
-    currentPrompt,
-    currentId,
+  const [cells, setCells] = useState<any[]>([]);
+  const [promptText, setPromptText] = useState("");
 
-    isEditing,
-    viewMode,
+  // 🔥 Listen for messages from extension
+  useEffect(() => {
+    console.log("✅ React is alive");
+    console.log("📡 Attaching message listener");
 
-    selectedRuns,
+    const handler = (event: MessageEvent) => {
+      console.log("📨 RAW MESSAGE:", event.data);
 
-    createPrompt,
-    selectPrompt,
-    updateDraft,
-    enableEdit,
-    cancelEdit,
-    runPrompt,
+      const message = event.data;
 
-    toggleRunSelection,
-    setViewMode,
-  } = useNotebook();
+      if (message.type === "SYNC_STATE") {
+        console.log("✅ SYNC_STATE RECEIVED:", message.payload);
+        setCells(message.payload.cells);
+      }
+    };
+
+    window.addEventListener("message", handler);
+
+    return () => {
+      window.removeEventListener("message", handler);
+    };
+  }, []);
+
+  // 🔥 Send RUN_PROMPT to extension
+  function handleExecute() {
+    if (!promptText.trim()) return;
+
+    console.log("🚀 Sending RUN_PROMPT:", promptText);
+
+    sendMessage("RUN_PROMPT", {
+      text: promptText
+    });
+
+    setPromptText("");
+  }
 
   return (
-    <div className="h-screen flex flex-col bg-black text-white">
-      <MenuBar
-        onNew={createPrompt}
-        onEdit={enableEdit}
-        onCancelEdit={cancelEdit}
-        onRun={runPrompt}
-        onCompare={() => {}}
-        canCompare={selectedRuns.length === 2}
-        viewMode={viewMode}
-        onSetView={setViewMode}
-        isEditing={isEditing}
-      />
+    <div style={{ padding: "16px", color: "white" }}>
+      <h2>PACT</h2>
 
-      <div className="flex flex-1 overflow-hidden">
-        <PromptList
-          prompts={prompts}
-          currentId={currentId}
-          onSelect={selectPrompt}
+      {/* INPUT */}
+      <div style={{ marginBottom: "12px" }}>
+        <input
+          style={{
+            width: "80%",
+            padding: "8px",
+            marginRight: "8px",
+            background: "#111",
+            color: "white",
+            border: "1px solid #444"
+          }}
+          value={promptText}
+          onChange={(e) => setPromptText(e.target.value)}
+          placeholder="Enter prompt..."
         />
 
-        <div className="flex-1 p-4 overflow-auto">
-          <PromptEditor
-            prompt={currentPrompt}
-            isEditing={isEditing}
-            onChange={updateDraft}
-          />
+        <button onClick={handleExecute}>
+          Execute
+        </button>
+      </div>
 
-          {currentPrompt.runs.length > 0 && (
-            <ExecutionHistory
-              runs={currentPrompt.runs}
-              selected={selectedRuns}
-              onToggle={toggleRunSelection}
-            />
-          )}
-        </div>
+      {/* CURRENT PROMPT */}
+      <div style={{ marginBottom: "20px" }}>
+        <h3>Executed Prompt</h3>
+
+        {cells.length > 0 && (
+          <div style={{
+            padding: "12px",
+            border: "1px solid #333",
+            background: "#0b1a2b"
+          }}>
+            {cells[cells.length - 1].prompt?.content}
+          </div>
+        )}
+      </div>
+
+      {/* CURRENT RESPONSE */}
+      <div style={{ marginBottom: "20px" }}>
+        <h3>Latest Response</h3>
+
+        {cells.length > 0 && (
+          <div style={{
+            padding: "12px",
+            border: "1px solid #333",
+            background: "#0b1a2b"
+          }}>
+            {cells[cells.length - 1].response?.content}
+          </div>
+        )}
+      </div>
+
+      {/* EXECUTION HISTORY */}
+      <div>
+        <h3>Execution History</h3>
+
+        {cells.map((cell, index) => (
+          <div
+            key={cell.cellId}
+            style={{
+              marginBottom: "12px",
+              padding: "12px",
+              border: "1px solid #333",
+              background: "#0b1a2b"
+            }}
+          >
+            <div style={{ marginBottom: "6px" }}>
+              <strong>Run #{index + 1}</strong>
+            </div>
+
+            <div style={{ opacity: 0.7 }}>
+              {cell.prompt?.content}
+            </div>
+
+            <div>
+              {cell.response?.content}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
