@@ -1,34 +1,39 @@
-import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
+import * as os from "os";
 
+// 🔥 Root storage folder (NO workspace dependency)
 export function getPactRoot(): string {
-  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+  const homeDir = os.homedir();
+  const pactRoot = path.join(homeDir, "pact-data");
 
-  if (!workspaceFolder) {
-    throw new Error("No workspace folder open");
-  }
-
-const pactRoot = path.join(workspaceFolder.uri.fsPath, "pact-data");
-
-  if (!fs.existsSync(pactRoot)) {
-    fs.mkdirSync(pactRoot);
-  }
+  ensureDir(pactRoot);
 
   return pactRoot;
 }
 
-export function ensureDir(dirPath: string) {
+// 🔥 Ensure directory exists
+export function ensureDir(dirPath: string): void {
   if (!fs.existsSync(dirPath)) {
-    fs.mkdirSync(dirPath);
+    fs.mkdirSync(dirPath, { recursive: true });
   }
 }
 
+// 🔥 Notebook root folder
+export function getNotebookRoot(): string {
+  const root = path.join(getPactRoot(), "notebooks");
+  ensureDir(root);
+  return root;
+}
+
+// 🔥 Specific notebook folder
+export function getNotebookFolder(notebookId: string): string {
+  const folder = path.join(getNotebookRoot(), notebookId);
+  ensureDir(folder);
+  return folder;
+}
+
+// 🔥 Identify system notebooks (read-only later)
 export function isSystemNotebook(notebookId: string): boolean {
-  return [
-    "core-prompts",
-    "core-responses",
-    "integrated-prompts",
-    "integrated-responses"
-  ].includes(notebookId);
+  return notebookId.startsWith("core-") || notebookId.startsWith("system-");
 }

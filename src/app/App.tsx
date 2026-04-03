@@ -1,145 +1,133 @@
 import { useEffect, useState } from "react";
 
-// Bridge helper
-type VSCodeApi = {
-  postMessage: (msg: { type: string; payload: unknown }) => void;
+type Cell = {
+  prompt?: string;
+  response?: string;
 };
 
-function sendMessage(type: string, payload: unknown) {
-  const vscode = (window as unknown as { acquireVsCodeApi?: () => VSCodeApi })
-    .acquireVsCodeApi?.();
-
-  if (!vscode) {
-    console.warn("VSCode API not available");
-    return;
+declare global {
+  interface Window {
+    acquireVsCodeApi?: () => any;
   }
-
-  vscode.postMessage({ type, payload });
 }
 
+const vscode = window.acquireVsCodeApi?.();
+
 export default function App() {
-  const [cells, setCells] = useState<any[]>([]);
-  const [promptText, setPromptText] = useState("");
+  const [cells, setCells] = useState<Cell[]>([]);
+  const [input, setInput] = useState("");
 
-  // 🔥 Listen for messages from extension
   useEffect(() => {
-    console.log("✅ React is alive");
-    console.log("📡 Attaching message listener");
-
-    const handler = (event: MessageEvent) => {
-      console.log("📨 RAW MESSAGE:", event.data);
-
+    window.addEventListener("message", (event) => {
       const message = event.data;
 
       if (message.type === "SYNC_STATE") {
-        console.log("✅ SYNC_STATE RECEIVED:", message.payload);
-        setCells(message.payload.cells);
+        console.log("SYNC_STATE received:", message.payload.cells);
+        setCells(message.payload.cells || []);
       }
-    };
-
-    window.addEventListener("message", handler);
-
-    return () => {
-      window.removeEventListener("message", handler);
-    };
+    });
   }, []);
 
-  // 🔥 Send RUN_PROMPT to extension
-  function handleExecute() {
-    if (!promptText.trim()) return;
+  const runPrompt = () => {
+    if (!input.trim()) return;
 
-    console.log("🚀 Sending RUN_PROMPT:", promptText);
-
-    sendMessage("RUN_PROMPT", {
-      text: promptText
+    vscode?.postMessage({
+      type: "RUN_PROMPT",
+      payload: { text: input },
     });
 
-    setPromptText("");
-  }
+    setInput("");
+  };
 
   return (
-    <div style={{ padding: "16px", color: "white" }}>
-      <h2>PACT</h2>
-
-      {/* INPUT */}
-      <div style={{ marginBottom: "12px" }}>
-        <input
-          style={{
-            width: "80%",
-            padding: "8px",
-            marginRight: "8px",
-            background: "#111",
-            color: "white",
-            border: "1px solid #444"
-          }}
-          value={promptText}
-          onChange={(e) => setPromptText(e.target.value)}
-          placeholder="Enter prompt..."
-        />
-
-        <button onClick={handleExecute}>
-          Execute
-        </button>
-      </div>
-
-      {/* CURRENT PROMPT */}
-      <div style={{ marginBottom: "20px" }}>
-        <h3>Executed Prompt</h3>
-
-        {cells.length > 0 && (
-          <div style={{
-            padding: "12px",
-            border: "1px solid #333",
-            background: "#0b1a2b"
-          }}>
-            {cells[cells.length - 1].prompt?.content}
-          </div>
+    <div style={styles.container}>
+      <div style={styles.history}>
+        {cells.length === 0 && (
+          <div style={styles.placeholder}>No cells yet</div>
         )}
-      </div>
-
-      {/* CURRENT RESPONSE */}
-      <div style={{ marginBottom: "20px" }}>
-        <h3>Latest Response</h3>
-
-        {cells.length > 0 && (
-          <div style={{
-            padding: "12px",
-            border: "1px solid #333",
-            background: "#0b1a2b"
-          }}>
-            {cells[cells.length - 1].response?.content}
-          </div>
-        )}
-      </div>
-
-      {/* EXECUTION HISTORY */}
-      <div>
-        <h3>Execution History</h3>
 
         {cells.map((cell, index) => (
-          <div
-            key={cell.cellId}
-            style={{
-              marginBottom: "12px",
-              padding: "12px",
-              border: "1px solid #333",
-              background: "#0b1a2b"
-            }}
-          >
-            <div style={{ marginBottom: "6px" }}>
-              <strong>Run #{index + 1}</strong>
+          <div key={index} style={styles.cell}>
+            <div style={styles.prompt}>
+              <strong>Prompt:</strong>
+              <div>{cell.prompt}</div>
             </div>
 
-            <div style={{ opacity: 0.7 }}>
-              {cell.prompt?.content}
-            </div>
-
-            <div>
-              {cell.response?.content}
+            <div style={styles.response}>
+              <strong>Response:</strong>
+              <div>{cell.response}</div>
             </div>
           </div>
         ))}
       </div>
+
+      <div style={styles.inputBar}>
+        <input
+          style={styles.input}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Enter prompt..."
+        />
+
+        <button style={styles.button} onClick={runPrompt}>
+          Run
+        </button>
+      </div>
     </div>
   );
 }
+
+const styles: Record<string, React.CSSProperties> = {
+  container: {
+    display: "flex",
+    flexDirection: "column",
+    height: "100vh",
+    background: "#1e1e1e",
+    color: "#ddd",
+    fontFamily: "sans-serif",
+  },
+  history: {
+    flex: 1,
+    overflowY: "auto",
+    padding: "12px",
+  },
+  cell: {
+    marginBottom: "16px",
+    padding: "10px",
+    border: "1px solid #333",
+    borderRadius: "6px",
+    background: "#252526",
+  },
+  prompt: {
+    marginBottom: "8px",
+    color: "#9cdcfe",
+  },
+  response: {
+    color: "#ce9178",
+  },
+  inputBar: {
+    display: "flex",
+    borderTop: "1px solid #333",
+    padding: "10px",
+  },
+  input: {
+    flex: 1,
+    padding: "8px",
+    background: "#1e1e1e",
+    color: "#ddd",
+    border: "1px solid #555",
+    borderRadius: "4px",
+  },
+  button: {
+    marginLeft: "8px",
+    padding: "8px 12px",
+    background: "#0e639c",
+    color: "white",
+    border: "none",
+    borderRadius: "4px",
+    cursor: "pointer",
+  },
+  placeholder: {
+    opacity: 0.5,
+  },
+};

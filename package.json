@@ -1,29 +1,28 @@
 {
   "name": "pact-react-2",
+  "publisher": "nik",
   "private": true,
   "version": "0.0.0",
-  "type": "module",
-  "main": "./out/extension.js",
-
+  "main": "./out/host/extension.js",
   "engines": {
     "vscode": "^1.80.0"
   },
-
-  "activationEvents": [],
+  "activationEvents": ["onStartupFinished"],
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "eslint .",
-    "preview": "vite preview"
+    "build:ext": "tsc -p tsconfig.node.json",
+    "clean": "rm -rf out dist",
+    "pact": "npm run clean && npm run build && npm run build:ext && code --extensionDevelopmentPath=. --disable-extensions"
   },
   "contributes": {
-  "commands": [
-    {
-      "command": "pact.openUI",
-      "title": "PACT: Open UI"
-    }
-  ]
-},
+    "commands": [
+      {
+        "command": "pact.openUI",
+        "title": "PACT: Open UI"
+      }
+    ]
+  },
   "dependencies": {
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
