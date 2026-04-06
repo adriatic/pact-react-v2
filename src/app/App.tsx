@@ -12,18 +12,30 @@ const vscode =
 type Cell = {
   prompt: string;
   response?: string;
+  status: "running" | "done";
 };
 
 export default function App() {
   const [prompt, setPrompt] = useState("Who was mark twain");
   const [cells, setCells] = useState<Cell[]>([]);
+  const [currentIndex, setCurrentIndex] = useState<number>(-1);
+  const [isRunning, setIsRunning] = useState(false);
 
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       const message = event.data;
 
       if (message?.type === "addCell") {
-        setCells((prev) => [...prev, { prompt: message.payload }]);
+        setCells((prev) => {
+          const updated = [
+            ...prev,
+            { prompt: message.payload, status: "running" },
+          ];
+          setCurrentIndex(updated.length - 1);
+          return updated;
+        });
+
+        setIsRunning(true);
       }
 
       if (message?.type === "addResponse") {
@@ -34,9 +46,12 @@ export default function App() {
           updated[updated.length - 1] = {
             ...updated[updated.length - 1],
             response: message.payload,
+            status: "done",
           };
           return updated;
         });
+
+        setIsRunning(false);
       }
     };
 
@@ -45,6 +60,8 @@ export default function App() {
   }, []);
 
   const handleRun = () => {
+    if (isRunning) return;
+
     if (vscode) {
       vscode.postMessage({
         type: "runPrompt",
@@ -53,43 +70,108 @@ export default function App() {
     }
   };
 
+  const goPrev = () => {
+    if (currentIndex <= 0) return;
+    setCurrentIndex((i) => i - 1);
+  };
+
+  const goNext = () => {
+    if (currentIndex >= cells.length - 1) return;
+    setCurrentIndex((i) => i + 1);
+  };
+
+  const currentCell =
+    currentIndex >= 0 ? cells[currentIndex] : null;
+
+  const atFirst = currentIndex <= 0;
+  const atLast = currentIndex >= cells.length - 1;
+
   return (
     <div style={{ padding: 20 }}>
-      {/* 🔥 FIX HERE */}
-      {cells.length === 0 && <h2>No cells yet</h2>}
+      {cells.length > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          <strong>
+            Cell {currentIndex + 1} / {cells.length}
+          </strong>
 
-      <div style={{ marginBottom: 20 }}>
-        {cells.map((cell, index) => (
-          <div
-            key={index}
+          <span style={{ marginLeft: 10 }}>
+            <button
+              onClick={goPrev}
+              disabled={atFirst}
+              style={{
+                opacity: atFirst ? 0.3 : 1,
+                cursor: atFirst ? "not-allowed" : "pointer",
+              }}
+            >
+              ←
+            </button>
+
+            <button
+              onClick={goNext}
+              disabled={atLast}
+              style={{
+                opacity: atLast ? 0.3 : 1,
+                cursor: atLast ? "not-allowed" : "pointer",
+              }}
+            >
+              →
+            </button>
+          </span>
+
+          <span
             style={{
-              padding: 10,
-              border: "1px solid #444",
-              marginBottom: 10,
+              marginLeft: 15,
+              fontWeight: "bold",
+              color: isRunning ? "red" : "green",
             }}
           >
-            <div>{cell.prompt}</div>
-            {cell.response && (
-              <div style={{ marginTop: 8, color: "#aaa" }}>
-                {cell.response}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+            ●
+          </span>
+        </div>
+      )}
+
+      {cells.length === 0 && <h2>No cells yet</h2>}
+
+      {currentCell && (
+        <div
+          style={{
+            padding: 10,
+            border: "1px solid #444",
+            marginBottom: 20,
+          }}
+        >
+          <div>{currentCell.prompt}</div>
+
+          {currentCell.status === "running" && (
+            <div style={{ marginTop: 8, color: "#888" }}>
+              Running...
+            </div>
+          )}
+
+          {currentCell.status === "done" && (
+            <div style={{ marginTop: 8, color: "#aaa" }}>
+              {currentCell.response}
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 10 }}>
         <input
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
+          disabled={isRunning}
           style={{
             padding: 10,
             border: "2px solid orange",
             flex: 1,
+            opacity: isRunning ? 0.6 : 1,
           }}
         />
 
-        <button onClick={handleRun}>Run</button>
+        <button onClick={handleRun} disabled={isRunning}>
+          Run
+        </button>
       </div>
     </div>
   );
