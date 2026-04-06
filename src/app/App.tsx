@@ -59,6 +59,26 @@ export default function App() {
     return () => window.removeEventListener("message", handler);
   }, []);
 
+  // 🔥 KEYBOARD NAVIGATION
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (cells.length === 0) return;
+
+      if (e.key === "ArrowLeft") {
+        setCurrentIndex((i) => Math.max(0, i - 1));
+      }
+
+      if (e.key === "ArrowRight") {
+        setCurrentIndex((i) =>
+          Math.min(cells.length - 1, i + 1)
+        );
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [cells.length]);
+
   const handleRun = () => {
     if (isRunning) return;
 
