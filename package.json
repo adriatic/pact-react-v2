@@ -1,19 +1,21 @@
 {
   "name": "pact-react-2",
   "publisher": "nik",
-  "private": true,
   "version": "0.0.0",
-  "main": "./out/host/extension.js",
+  "main": "./out/extension.js",
   "engines": {
     "vscode": "^1.80.0"
   },
-  "activationEvents": ["onStartupFinished"],
+"activationEvents": [
+  "*"
+],
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build:web": "tsc --noEmit && vite build",
     "build:ext": "tsc -p tsconfig.node.json",
+    "build": "npm run build:web && npm run build:ext",
     "clean": "rm -rf out dist",
-    "pact": "npm run clean && npm run build && npm run build:ext && code --extensionDevelopmentPath=. --disable-extensions"
+    "pact": "npm run clean && npm run build && code --extensionDevelopmentPath=. --disable-extensions"
   },
   "contributes": {
     "commands": [
@@ -21,7 +23,26 @@
         "command": "pact.openUI",
         "title": "PACT: Open UI"
       }
-    ]
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "pact-view",
+          "title": "PACT",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "pact-view": [
+        {
+          "id": "pact.controlPanel",
+          "type": "webview",
+          "name": "PACT Control",
+          "icon": "media/icon.svg"
+        }
+      ]
+    }
   },
   "dependencies": {
     "react": "^19.2.4",
@@ -29,7 +50,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
-    "@types/node": "^24.12.0",
+    "@types/node": "^24.12.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/vscode": "^1.110.0",

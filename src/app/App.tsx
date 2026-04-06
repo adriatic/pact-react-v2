@@ -1,133 +1,74 @@
 import { useEffect, useState } from "react";
 
-type Cell = {
-  prompt?: string;
-  response?: string;
+declare function acquireVsCodeApi(): {
+  postMessage: (msg: unknown) => void;
 };
 
-declare global {
-  interface Window {
-    acquireVsCodeApi?: () => any;
-  }
-}
-
-const vscode = window.acquireVsCodeApi?.();
+const vscode =
+  typeof acquireVsCodeApi === "function"
+    ? acquireVsCodeApi()
+    : null;
 
 export default function App() {
-  const [cells, setCells] = useState<Cell[]>([]);
-  const [input, setInput] = useState("");
+  const [prompt, setPrompt] = useState("Who was mark twain");
+  const [cells, setCells] = useState<string[]>([]);
 
+  // 🔥 RECEIVE messages from extension
   useEffect(() => {
-    window.addEventListener("message", (event) => {
+    const handler = (event: MessageEvent) => {
       const message = event.data;
 
-      if (message.type === "SYNC_STATE") {
-        console.log("SYNC_STATE received:", message.payload.cells);
-        setCells(message.payload.cells || []);
+      if (message.type === "addCell") {
+        setCells((prev) => [...prev, message.payload]);
       }
-    });
+    };
+
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
   }, []);
 
-  const runPrompt = () => {
-    if (!input.trim()) return;
-
-    vscode?.postMessage({
-      type: "RUN_PROMPT",
-      payload: { text: input },
-    });
-
-    setInput("");
+  const handleRun = () => {
+    if (vscode) {
+      vscode.postMessage({
+        type: "runPrompt",
+        payload: prompt,
+      });
+    }
   };
 
   return (
-    <div style={styles.container}>
-      <div style={styles.history}>
-        {cells.length === 0 && (
-          <div style={styles.placeholder}>No cells yet</div>
-        )}
+    <div style={{ padding: 20 }}>
+      <h2>No cells yet</h2>
 
+      {/* 🔥 Render cells */}
+      <div style={{ marginBottom: 20 }}>
         {cells.map((cell, index) => (
-          <div key={index} style={styles.cell}>
-            <div style={styles.prompt}>
-              <strong>Prompt:</strong>
-              <div>{cell.prompt}</div>
-            </div>
-
-            <div style={styles.response}>
-              <strong>Response:</strong>
-              <div>{cell.response}</div>
-            </div>
+          <div
+            key={index}
+            style={{
+              padding: 10,
+              border: "1px solid #444",
+              marginBottom: 10,
+            }}
+          >
+            {cell}
           </div>
         ))}
       </div>
 
-      <div style={styles.inputBar}>
+      <div style={{ display: "flex", gap: 10 }}>
         <input
-          style={styles.input}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Enter prompt..."
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          style={{
+            padding: 10,
+            border: "2px solid orange",
+            flex: 1,
+          }}
         />
 
-        <button style={styles.button} onClick={runPrompt}>
-          Run
-        </button>
+        <button onClick={handleRun}>Run</button>
       </div>
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    display: "flex",
-    flexDirection: "column",
-    height: "100vh",
-    background: "#1e1e1e",
-    color: "#ddd",
-    fontFamily: "sans-serif",
-  },
-  history: {
-    flex: 1,
-    overflowY: "auto",
-    padding: "12px",
-  },
-  cell: {
-    marginBottom: "16px",
-    padding: "10px",
-    border: "1px solid #333",
-    borderRadius: "6px",
-    background: "#252526",
-  },
-  prompt: {
-    marginBottom: "8px",
-    color: "#9cdcfe",
-  },
-  response: {
-    color: "#ce9178",
-  },
-  inputBar: {
-    display: "flex",
-    borderTop: "1px solid #333",
-    padding: "10px",
-  },
-  input: {
-    flex: 1,
-    padding: "8px",
-    background: "#1e1e1e",
-    color: "#ddd",
-    border: "1px solid #555",
-    borderRadius: "4px",
-  },
-  button: {
-    marginLeft: "8px",
-    padding: "8px 12px",
-    background: "#0e639c",
-    color: "white",
-    border: "none",
-    borderRadius: "4px",
-    cursor: "pointer",
-  },
-  placeholder: {
-    opacity: 0.5,
-  },
-};
