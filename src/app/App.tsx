@@ -22,8 +22,6 @@ export default function App() {
     const handler = (event: MessageEvent) => {
       const message = event.data;
 
-      console.log("UI RECEIVED:", message); // 🔍 DEBUG
-
       if (message?.type === "addCell") {
         setCells((prev) => [...prev, { prompt: message.payload }]);
       }
@@ -57,7 +55,8 @@ export default function App() {
 
   return (
     <div style={{ padding: 20 }}>
-      <h2>No cells yet</h2>
+      {/* 🔥 FIX HERE */}
+      {cells.length === 0 && <h2>No cells yet</h2>}
 
       <div style={{ marginBottom: 20 }}>
         {cells.map((cell, index) => (
