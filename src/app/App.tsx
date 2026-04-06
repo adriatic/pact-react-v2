@@ -59,10 +59,10 @@ export default function App() {
     return () => window.removeEventListener("message", handler);
   }, []);
 
-  // 🔥 KEYBOARD NAVIGATION
+  // 🔥 KEYBOARD NAVIGATION (LOCKED DURING RUN)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (cells.length === 0) return;
+      if (cells.length === 0 || isRunning) return;
 
       if (e.key === "ArrowLeft") {
         setCurrentIndex((i) => Math.max(0, i - 1));
@@ -77,7 +77,7 @@ export default function App() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [cells.length]);
+  }, [cells.length, isRunning]);
 
   const handleRun = () => {
     if (isRunning) return;
@@ -91,12 +91,12 @@ export default function App() {
   };
 
   const goPrev = () => {
-    if (currentIndex <= 0) return;
+    if (currentIndex <= 0 || isRunning) return;
     setCurrentIndex((i) => i - 1);
   };
 
   const goNext = () => {
-    if (currentIndex >= cells.length - 1) return;
+    if (currentIndex >= cells.length - 1 || isRunning) return;
     setCurrentIndex((i) => i + 1);
   };
 
@@ -117,10 +117,11 @@ export default function App() {
           <span style={{ marginLeft: 10 }}>
             <button
               onClick={goPrev}
-              disabled={atFirst}
+              disabled={atFirst || isRunning}
               style={{
-                opacity: atFirst ? 0.3 : 1,
-                cursor: atFirst ? "not-allowed" : "pointer",
+                opacity: atFirst || isRunning ? 0.3 : 1,
+                cursor:
+                  atFirst || isRunning ? "not-allowed" : "pointer",
               }}
             >
               ←
@@ -128,10 +129,11 @@ export default function App() {
 
             <button
               onClick={goNext}
-              disabled={atLast}
+              disabled={atLast || isRunning}
               style={{
-                opacity: atLast ? 0.3 : 1,
-                cursor: atLast ? "not-allowed" : "pointer",
+                opacity: atLast || isRunning ? 0.3 : 1,
+                cursor:
+                  atLast || isRunning ? "not-allowed" : "pointer",
               }}
             >
               →

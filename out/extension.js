@@ -4,6 +4,7 @@ exports.activate = activate;
 exports.deactivate = deactivate;
 const vscode = require("vscode");
 const fs = require("fs");
+const EXECUTION_DELAY_MS = 3000; // 🔥 CHANGE THIS FOR TESTING
 function activate(context) {
     const provider = {
         resolveWebviewView(webviewView) {
@@ -14,19 +15,17 @@ function activate(context) {
                 ],
             };
             webviewView.webview.onDidReceiveMessage((message) => {
-                console.log("EXT RECEIVED:", message); // 🔍 DEBUG
                 if (message.type === "runPrompt") {
                     webviewView.webview.postMessage({
                         type: "addCell",
                         payload: message.payload,
                     });
                     setTimeout(() => {
-                        console.log("EXT SENDING RESPONSE"); // 🔍 DEBUG
                         webviewView.webview.postMessage({
                             type: "addResponse",
                             payload: `Response to: ${message.payload}`,
                         });
-                    }, 500);
+                    }, EXECUTION_DELAY_MS);
                 }
             });
             webviewView.webview.html = getHtml(webviewView.webview, context.extensionUri);

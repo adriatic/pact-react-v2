@@ -1,6 +1,8 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
 
+const EXECUTION_DELAY_MS = 3000; // 🔥 CHANGE THIS FOR TESTING
+
 export function activate(context: vscode.ExtensionContext): void {
   const provider: vscode.WebviewViewProvider = {
     resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -12,8 +14,6 @@ export function activate(context: vscode.ExtensionContext): void {
       };
 
       webviewView.webview.onDidReceiveMessage((message) => {
-        console.log("EXT RECEIVED:", message); // 🔍 DEBUG
-
         if (message.type === "runPrompt") {
           webviewView.webview.postMessage({
             type: "addCell",
@@ -21,13 +21,11 @@ export function activate(context: vscode.ExtensionContext): void {
           });
 
           setTimeout(() => {
-            console.log("EXT SENDING RESPONSE"); // 🔍 DEBUG
-
             webviewView.webview.postMessage({
               type: "addResponse",
               payload: `Response to: ${message.payload}`,
             });
-          }, 500);
+          }, EXECUTION_DELAY_MS);
         }
       });
 
