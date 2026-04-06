@@ -5,25 +5,28 @@ exports.deactivate = deactivate;
 const vscode = require("vscode");
 const fs = require("fs");
 function activate(context) {
-    console.log("=== ACTIVATE CALLED ===");
     const provider = {
         resolveWebviewView(webviewView) {
-            console.log("=== VIEW RESOLVED ===");
             webviewView.webview.options = {
                 enableScripts: true,
                 localResourceRoots: [
                     vscode.Uri.joinPath(context.extensionUri, "dist"),
                 ],
             };
-            // 🔥 MESSAGE HANDLER
             webviewView.webview.onDidReceiveMessage((message) => {
+                console.log("EXT RECEIVED:", message); // 🔍 DEBUG
                 if (message.type === "runPrompt") {
-                    console.log("RUN:", message.payload);
-                    // send back to UI
                     webviewView.webview.postMessage({
                         type: "addCell",
                         payload: message.payload,
                     });
+                    setTimeout(() => {
+                        console.log("EXT SENDING RESPONSE"); // 🔍 DEBUG
+                        webviewView.webview.postMessage({
+                            type: "addResponse",
+                            payload: `Response to: ${message.payload}`,
+                        });
+                    }, 500);
                 }
             });
             webviewView.webview.html = getHtml(webviewView.webview, context.extensionUri);

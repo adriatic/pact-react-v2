@@ -2,12 +2,8 @@ import * as vscode from "vscode";
 import * as fs from "fs";
 
 export function activate(context: vscode.ExtensionContext): void {
-  console.log("=== ACTIVATE CALLED ===");
-
   const provider: vscode.WebviewViewProvider = {
     resolveWebviewView(webviewView: vscode.WebviewView): void {
-      console.log("=== VIEW RESOLVED ===");
-
       webviewView.webview.options = {
         enableScripts: true,
         localResourceRoots: [
@@ -15,16 +11,23 @@ export function activate(context: vscode.ExtensionContext): void {
         ],
       };
 
-      // 🔥 MESSAGE HANDLER
       webviewView.webview.onDidReceiveMessage((message) => {
-        if (message.type === "runPrompt") {
-          console.log("RUN:", message.payload);
+        console.log("EXT RECEIVED:", message); // 🔍 DEBUG
 
-          // send back to UI
+        if (message.type === "runPrompt") {
           webviewView.webview.postMessage({
             type: "addCell",
             payload: message.payload,
           });
+
+          setTimeout(() => {
+            console.log("EXT SENDING RESPONSE"); // 🔍 DEBUG
+
+            webviewView.webview.postMessage({
+              type: "addResponse",
+              payload: `Response to: ${message.payload}`,
+            });
+          }, 500);
         }
       });
 

@@ -9,17 +9,36 @@ const vscode =
     ? acquireVsCodeApi()
     : null;
 
+type Cell = {
+  prompt: string;
+  response?: string;
+};
+
 export default function App() {
   const [prompt, setPrompt] = useState("Who was mark twain");
-  const [cells, setCells] = useState<string[]>([]);
+  const [cells, setCells] = useState<Cell[]>([]);
 
-  // 🔥 RECEIVE messages from extension
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       const message = event.data;
 
-      if (message.type === "addCell") {
-        setCells((prev) => [...prev, message.payload]);
+      console.log("UI RECEIVED:", message); // 🔍 DEBUG
+
+      if (message?.type === "addCell") {
+        setCells((prev) => [...prev, { prompt: message.payload }]);
+      }
+
+      if (message?.type === "addResponse") {
+        setCells((prev) => {
+          if (prev.length === 0) return prev;
+
+          const updated = [...prev];
+          updated[updated.length - 1] = {
+            ...updated[updated.length - 1],
+            response: message.payload,
+          };
+          return updated;
+        });
       }
     };
 
@@ -40,7 +59,6 @@ export default function App() {
     <div style={{ padding: 20 }}>
       <h2>No cells yet</h2>
 
-      {/* 🔥 Render cells */}
       <div style={{ marginBottom: 20 }}>
         {cells.map((cell, index) => (
           <div
@@ -51,7 +69,12 @@ export default function App() {
               marginBottom: 10,
             }}
           >
-            {cell}
+            <div>{cell.prompt}</div>
+            {cell.response && (
+              <div style={{ marginTop: 8, color: "#aaa" }}>
+                {cell.response}
+              </div>
+            )}
           </div>
         ))}
       </div>
