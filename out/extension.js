@@ -4,8 +4,14 @@ exports.activate = activate;
 exports.deactivate = deactivate;
 const vscode = require("vscode");
 const fs = require("fs");
-const EXECUTION_DELAY_MS = 3000; // 🔥 CHANGE THIS FOR TESTING
+const path = require("path");
+const EXECUTION_DELAY_MS = 3000;
 function activate(context) {
+    const storagePath = context.globalStorageUri.fsPath;
+    const filePath = path.join(storagePath, "cells.json");
+    if (!fs.existsSync(storagePath)) {
+        fs.mkdirSync(storagePath, { recursive: true });
+    }
     const provider = {
         resolveWebviewView(webviewView) {
             webviewView.webview.options = {
@@ -14,17 +20,40 @@ function activate(context) {
                     vscode.Uri.joinPath(context.extensionUri, "dist"),
                 ],
             };
+            // 🔥 LOAD EXISTING CELLS
+            let cells = [];
+            if (fs.existsSync(filePath)) {
+                try {
+                    const raw = fs.readFileSync(filePath, "utf8");
+                    cells = JSON.parse(raw);
+                }
+                catch {
+                    cells = [];
+                }
+            }
+            // 🔥 SEND TO UI AFTER LOAD
+            setTimeout(() => {
+                webviewView.webview.postMessage({
+                    type: "loadCells",
+                    payload: cells,
+                });
+            }, 100);
             webviewView.webview.onDidReceiveMessage((message) => {
                 if (message.type === "runPrompt") {
+                    const prompt = message.payload;
                     webviewView.webview.postMessage({
                         type: "addCell",
-                        payload: message.payload,
+                        payload: prompt,
                     });
                     setTimeout(() => {
+                        const response = `Response to: ${prompt}`;
                         webviewView.webview.postMessage({
                             type: "addResponse",
-                            payload: `Response to: ${message.payload}`,
+                            payload: response,
                         });
+                        // 🔥 SAVE AFTER RESPONSE
+                        cells.push({ prompt, response });
+                        fs.writeFileSync(filePath, JSON.stringify(cells, null, 2));
                     }, EXECUTION_DELAY_MS);
                 }
             });

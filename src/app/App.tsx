@@ -16,7 +16,7 @@ type Cell = {
 };
 
 export default function App() {
-  const [prompt, setPrompt] = useState("Who was mark twain");
+  const [prompt, setPrompt] = useState("");
   const [cells, setCells] = useState<Cell[]>([]);
   const [currentIndex, setCurrentIndex] = useState<number>(-1);
   const [isRunning, setIsRunning] = useState(false);
@@ -25,11 +25,27 @@ export default function App() {
     const handler = (event: MessageEvent) => {
       const message = event.data;
 
+      // 🔥 LOAD PERSISTED CELLS
+      if (message?.type === "loadCells") {
+        const loaded: Cell[] = (message.payload || []).map((c: any) => ({
+          prompt: c.prompt,
+          response: c.response,
+          status: "done",
+        }));
+
+        setCells(loaded);
+
+        if (loaded.length > 0) {
+          setCurrentIndex(loaded.length - 1);
+        }
+      }
+
+      // 🔥 ADD NEW CELL
       if (message?.type === "addCell") {
         setCells((prev) => {
           const updated = [
             ...prev,
-            { prompt: message.payload, status: "running" },
+            { prompt: message.payload, status: "running" as const },
           ];
           setCurrentIndex(updated.length - 1);
           return updated;
@@ -38,6 +54,7 @@ export default function App() {
         setIsRunning(true);
       }
 
+      // 🔥 ADD RESPONSE
       if (message?.type === "addResponse") {
         setCells((prev) => {
           if (prev.length === 0) return prev;
@@ -80,7 +97,7 @@ export default function App() {
   }, [cells.length, isRunning]);
 
   const handleRun = () => {
-    if (isRunning) return;
+    if (isRunning || !prompt.trim()) return;
 
     if (vscode) {
       vscode.postMessage({
@@ -88,6 +105,8 @@ export default function App() {
         payload: prompt,
       });
     }
+
+    setPrompt("");
   };
 
   const goPrev = () => {
@@ -183,15 +202,28 @@ export default function App() {
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           disabled={isRunning}
+          placeholder="Enter prompt..."
           style={{
             padding: 10,
             border: "2px solid orange",
             flex: 1,
+            backgroundColor: "#1e1e1e",
+            color: "#ffffff",
             opacity: isRunning ? 0.6 : 1,
           }}
         />
 
-        <button onClick={handleRun} disabled={isRunning}>
+        <button
+          onClick={handleRun}
+          disabled={isRunning || !prompt.trim()}
+          title={
+            isRunning
+              ? "Execution in progress"
+              : !prompt.trim()
+              ? "Enter a prompt"
+              : ""
+          }
+        >
           Run
         </button>
       </div>
