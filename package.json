@@ -16,7 +16,7 @@
 
   "clean": "rm -rf out dist",
 
-  "pact:dev": "bash ./scripts/dev.sh",
+  "pact-dev": "zsh ./scripts/dev.sh",
 
   "pact": "npm run clean && npm run build && code --extensionDevelopmentPath=. --disable-extensions"
 },

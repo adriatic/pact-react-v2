@@ -7,10 +7,17 @@ const fs = require("fs");
 const path = require("path");
 const EXECUTION_DELAY_MS = 3000;
 function activate(context) {
-    const storagePath = context.globalStorageUri.fsPath;
-    const filePath = path.join(storagePath, "cells.json");
-    if (!fs.existsSync(storagePath)) {
-        fs.mkdirSync(storagePath, { recursive: true });
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders) {
+        vscode.window.showErrorMessage("No workspace folder open.");
+        return;
+    }
+    const workspacePath = workspaceFolders[0].uri.fsPath;
+    const pactDir = path.join(workspacePath, "pact");
+    const filePath = path.join(pactDir, "notebook.json");
+    // Ensure directory exists
+    if (!fs.existsSync(pactDir)) {
+        fs.mkdirSync(pactDir, { recursive: true });
     }
     const provider = {
         resolveWebviewView(webviewView) {
@@ -20,18 +27,19 @@ function activate(context) {
                     vscode.Uri.joinPath(context.extensionUri, "dist"),
                 ],
             };
-            // 🔥 LOAD EXISTING CELLS
+            // 🔥 LOAD FILE-BASED NOTEBOOK
             let cells = [];
             if (fs.existsSync(filePath)) {
                 try {
                     const raw = fs.readFileSync(filePath, "utf8");
-                    cells = JSON.parse(raw);
+                    const parsed = JSON.parse(raw);
+                    cells = parsed.cells || [];
                 }
                 catch {
                     cells = [];
                 }
             }
-            // 🔥 SEND TO UI AFTER LOAD
+            // Send to UI
             setTimeout(() => {
                 webviewView.webview.postMessage({
                     type: "loadCells",
@@ -51,9 +59,9 @@ function activate(context) {
                             type: "addResponse",
                             payload: response,
                         });
-                        // 🔥 SAVE AFTER RESPONSE
+                        // 🔥 WRITE TO FILE
                         cells.push({ prompt, response });
-                        fs.writeFileSync(filePath, JSON.stringify(cells, null, 2));
+                        fs.writeFileSync(filePath, JSON.stringify({ cells }, null, 2));
                     }, EXECUTION_DELAY_MS);
                 }
             });

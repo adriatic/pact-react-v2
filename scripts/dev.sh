@@ -2,7 +2,7 @@
 
 echo "🚀 PACT DEV START"
 
-# Absolute cleanup
+# Clean environment
 unset npm_config_prefix
 unset NPM_CONFIG_PREFIX
 
@@ -10,7 +10,7 @@ unset NPM_CONFIG_PREFIX
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 
-# 🔥 THIS IS THE KEY LINE (fixes everything)
+# Use node safely
 nvm use --delete-prefix node
 
 # Verify
@@ -22,7 +22,7 @@ echo "Prefix: $(npm config get prefix)"
 npm run build:web
 npm run build:ext
 
-# Run VSCode
-code \
+# 🔥 IMPORTANT: open WORKSPACE (this fixes your issue)
+code pact.code-workspace\
 --extensionDevelopmentPath="$(pwd)" \
 --disable-extensions
