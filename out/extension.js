@@ -3,26 +3,97 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.activate = activate;
 exports.deactivate = deactivate;
 const vscode = require("vscode");
+const path = require("path");
+const fs = require("fs");
 function activate(context) {
-    vscode.window.showInformationMessage('PACT ACTIVATED');
-    const disposable = vscode.commands.registerCommand('pact.open', () => {
-        const panel = vscode.window.createWebviewPanel('pact', 'PACT', vscode.ViewColumn.One, {
-            enableScripts: false
+    const disposable = vscode.commands.registerCommand("pact.open", () => {
+        const panel = vscode.window.createWebviewPanel("pact", "PACT", vscode.ViewColumn.One, {
+            enableScripts: true,
+            localResourceRoots: [
+                vscode.Uri.file(path.join(context.extensionPath, "dist")),
+            ],
         });
-        panel.webview.html = `
-      <!DOCTYPE html>
-      <html lang="en">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>PACT</title>
-        </head>
-        <body style="background:#1e1e1e;color:white;font-family:sans-serif;">
-          <h1>PACT is running</h1>
-        </body>
-      </html>
-    `;
+        const distPath = path.join(context.extensionPath, "dist");
+        const indexHtmlPath = vscode.Uri.file(path.join(distPath, "index.html"));
+        panel.webview.html = getHtml(panel.webview, indexHtmlPath);
+        let isRunning = false;
+        let cancelRequested = false;
+        // 🧠 Store cell results for context lookup
+        const cellResults = new Map();
+        panel.webview.onDidReceiveMessage(async (message) => {
+            if (message.type === "runPrompt" || message.type === "retryCell") {
+                if (isRunning) {
+                    panel.webview.postMessage({ type: "busy" });
+                    return;
+                }
+                const prompt = message.prompt;
+                const parentId = message.parentId || null;
+                isRunning = true;
+                cancelRequested = false;
+                const cellId = generateId();
+                panel.webview.postMessage({
+                    type: "startCell",
+                    id: cellId,
+                    parentId,
+                    prompt,
+                });
+                panel.webview.postMessage({ type: "running" });
+                try {
+                    // 🧠 Build context
+                    let base = `Echo: ${prompt}`;
+                    if (parentId && cellResults.has(parentId)) {
+                        const parentResponse = cellResults.get(parentId);
+                        base = `Echo: ${parentResponse} → ${prompt}`;
+                    }
+                    const words = base.split(" ");
+                    let current = "";
+                    for (const word of words) {
+                        if (cancelRequested)
+                            break;
+                        await delay(500);
+                        if (cancelRequested)
+                            break;
+                        current += (current ? " " : "") + word;
+                        panel.webview.postMessage({
+                            type: "stream",
+                            id: cellId,
+                            chunk: current,
+                        });
+                    }
+                    // 🧠 Store final response
+                    cellResults.set(cellId, current);
+                    panel.webview.postMessage({
+                        type: "completeCell",
+                        id: cellId,
+                        status: cancelRequested ? "stopped" : "completed",
+                    });
+                }
+                finally {
+                    isRunning = false;
+                    cancelRequested = false;
+                    panel.webview.postMessage({ type: "idle" });
+                }
+            }
+            if (message.type === "cancel") {
+                cancelRequested = true;
+            }
+        });
     });
     context.subscriptions.push(disposable);
+}
+function generateId() {
+    return Math.random().toString(36).substring(2, 10);
+}
+function delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+function getHtml(webview, htmlUri) {
+    let html = fs.readFileSync(htmlUri.fsPath, "utf8");
+    html = html.replace(/(<script.*?src="|<link.*?href=")(.*?)"/g, (match, p1, p2) => {
+        const resourcePath = vscode.Uri.file(path.join(path.dirname(htmlUri.fsPath), p2));
+        const webviewUri = webview.asWebviewUri(resourcePath);
+        return `${p1}${webviewUri.toString()}"`;
+    });
+    return html;
 }
 function deactivate() { }

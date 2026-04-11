@@ -1,228 +1,167 @@
-import { useEffect, useState } from "react";
-
-declare function acquireVsCodeApi(): {
-  postMessage: (msg: unknown) => void;
-};
-
-const vscode =
-  typeof acquireVsCodeApi === "function"
-    ? acquireVsCodeApi()
-    : null;
+import React, { useState } from "react";
 
 type Cell = {
+  id: string;
+  parentId: string | null;
   prompt: string;
-  response?: string;
-  status: "running" | "done";
+  response: string;
+  status: "running" | "completed" | "stopped";
 };
 
+function generateId() {
+  return Math.random().toString(36).substring(2, 10);
+}
+
 export default function App() {
-  const [prompt, setPrompt] = useState("");
   const [cells, setCells] = useState<Cell[]>([]);
-  const [currentIndex, setCurrentIndex] = useState<number>(-1);
+  const [input, setInput] = useState("");
   const [isRunning, setIsRunning] = useState(false);
 
-  useEffect(() => {
-    const handler = (event: MessageEvent) => {
-      const message = event.data;
+  // 👉 NEW: Editable Retry state
+  const [draftParentId, setDraftParentId] = useState<string | null>(null);
 
-      // 🔥 LOAD PERSISTED CELLS
-      if (message?.type === "loadCells") {
-        const loaded: Cell[] = (message.payload || []).map((c: any) => ({
-          prompt: c.prompt,
-          response: c.response,
-          status: "done",
-        }));
+  // ----------------------------------------
+  // Execution (mock streaming)
+  // ----------------------------------------
+  function runCell(newCell: Cell) {
+    setIsRunning(true);
 
-        setCells(loaded);
+    setCells((prev) => [...prev, newCell]);
 
-        if (loaded.length > 0) {
-          setCurrentIndex(loaded.length - 1);
-        }
-      }
+    const parent = cells.find((c) => c.id === newCell.parentId);
 
-      // 🔥 ADD NEW CELL
-      if (message?.type === "addCell") {
-        setCells((prev) => {
-          const updated = [
-            ...prev,
-            { prompt: message.payload, status: "running" as const },
-          ];
-          setCurrentIndex(updated.length - 1);
-          return updated;
-        });
+    let response = "";
 
-        setIsRunning(true);
-      }
+    const interval = setInterval(() => {
+      response += ".";
 
-      // 🔥 ADD RESPONSE
-      if (message?.type === "addResponse") {
-        setCells((prev) => {
-          if (prev.length === 0) return prev;
+      setCells((prev) =>
+        prev.map((c) => (c.id === newCell.id ? { ...c, response } : c)),
+      );
+    }, 100);
 
-          const updated = [...prev];
-          updated[updated.length - 1] = {
-            ...updated[updated.length - 1],
-            response: message.payload,
-            status: "done",
-          };
-          return updated;
-        });
+    setTimeout(() => {
+      clearInterval(interval);
 
-        setIsRunning(false);
-      }
+      const finalResponse = parent
+        ? `Echo: ${parent.response} → ${newCell.prompt}`
+        : `Echo: ${newCell.prompt}`;
+
+      setCells((prev) =>
+        prev.map((c) =>
+          c.id === newCell.id
+            ? { ...c, response: finalResponse, status: "completed" }
+            : c,
+        ),
+      );
+
+      setIsRunning(false);
+    }, 800);
+  }
+
+  // ----------------------------------------
+  // Run button
+  // ----------------------------------------
+  function handleRun() {
+    if (!input.trim() || isRunning) return;
+
+    const parentId = draftParentId ?? null;
+
+    const newCell: Cell = {
+      id: generateId(),
+      parentId,
+      prompt: input,
+      response: "",
+      status: "running",
     };
 
-    window.addEventListener("message", handler);
-    return () => window.removeEventListener("message", handler);
-  }, []);
+    runCell(newCell);
 
-  // 🔥 KEYBOARD NAVIGATION (LOCKED DURING RUN)
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (cells.length === 0 || isRunning) return;
+    setInput("");
+    setDraftParentId(null); // ✅ exit retry mode
+  }
 
-      if (e.key === "ArrowLeft") {
-        setCurrentIndex((i) => Math.max(0, i - 1));
-      }
+  // ----------------------------------------
+  // Retry (EDIT MODE, no execution)
+  // ----------------------------------------
+  function handleRetry(cell: Cell) {
+    if (isRunning) return;
 
-      if (e.key === "ArrowRight") {
-        setCurrentIndex((i) =>
-          Math.min(cells.length - 1, i + 1)
-        );
-      }
-    };
+    setInput(cell.prompt);
+    setDraftParentId(cell.id);
+  }
 
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [cells.length, isRunning]);
+  // ----------------------------------------
+  // Cancel Retry
+  // ----------------------------------------
+  function cancelRetry() {
+    setDraftParentId(null);
+    setInput("");
+  }
 
-  const handleRun = () => {
-    if (isRunning || !prompt.trim()) return;
-
-    if (vscode) {
-      vscode.postMessage({
-        type: "runPrompt",
-        payload: prompt,
-      });
-    }
-
-    setPrompt("");
-  };
-
-  const goPrev = () => {
-    if (currentIndex <= 0 || isRunning) return;
-    setCurrentIndex((i) => i - 1);
-  };
-
-  const goNext = () => {
-    if (currentIndex >= cells.length - 1 || isRunning) return;
-    setCurrentIndex((i) => i + 1);
-  };
-
-  const currentCell =
-    currentIndex >= 0 ? cells[currentIndex] : null;
-
-  const atFirst = currentIndex <= 0;
-  const atLast = currentIndex >= cells.length - 1;
-
+  // ----------------------------------------
+  // Render
+  // ----------------------------------------
   return (
-    <div style={{ padding: 20 }}>
-      {cells.length > 0 && (
-        <div style={{ marginBottom: 10 }}>
-          <strong>
-            Cell {currentIndex + 1} / {cells.length}
-          </strong>
+    <div style={{ padding: 20, fontFamily: "sans-serif" }}>
+      <h2>PACT</h2>
 
-          <span style={{ marginLeft: 10 }}>
-            <button
-              onClick={goPrev}
-              disabled={atFirst || isRunning}
-              style={{
-                opacity: atFirst || isRunning ? 0.3 : 1,
-                cursor:
-                  atFirst || isRunning ? "not-allowed" : "pointer",
-              }}
-            >
-              ←
-            </button>
-
-            <button
-              onClick={goNext}
-              disabled={atLast || isRunning}
-              style={{
-                opacity: atLast || isRunning ? 0.3 : 1,
-                cursor:
-                  atLast || isRunning ? "not-allowed" : "pointer",
-              }}
-            >
-              →
-            </button>
-          </span>
-
-          <span
-            style={{
-              marginLeft: 15,
-              fontWeight: "bold",
-              color: isRunning ? "red" : "green",
-            }}
-          >
-            ●
-          </span>
-        </div>
-      )}
-
-      {cells.length === 0 && <h2>No cells yet</h2>}
-
-      {currentCell && (
+      {/* 🔶 Retry Banner */}
+      {draftParentId && (
         <div
           style={{
             padding: 10,
-            border: "1px solid #444",
-            marginBottom: 20,
+            marginBottom: 10,
+            background: "#333",
+            color: "white",
+            display: "flex",
+            justifyContent: "space-between",
           }}
         >
-          <div>{currentCell.prompt}</div>
-
-          {currentCell.status === "running" && (
-            <div style={{ marginTop: 8, color: "#888" }}>
-              Running...
-            </div>
-          )}
-
-          {currentCell.status === "done" && (
-            <div style={{ marginTop: 8, color: "#aaa" }}>
-              {currentCell.response}
-            </div>
-          )}
+          <span>Editing retry of Cell {draftParentId}</span>
+          <button onClick={cancelRetry}>Cancel</button>
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 10 }}>
-        <input
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          disabled={isRunning}
-          placeholder="Enter prompt..."
+      {/* Cells */}
+      {cells.map((cell) => (
+        <div
+          key={cell.id}
           style={{
+            border: "1px solid #555",
             padding: 10,
-            border: "2px solid orange",
-            flex: 1,
-            backgroundColor: "#1e1e1e",
-            color: "#ffffff",
-            opacity: isRunning ? 0.6 : 1,
+            marginBottom: 10,
           }}
-        />
+        >
+          <div>
+            <b>Cell</b>
+          </div>
+          <div>ID: {cell.id}</div>
+          <div>Parent: {cell.parentId ?? "None"}</div>
+          <div>Prompt: {cell.prompt}</div>
+          <div>Response: {cell.response}</div>
+          <div>
+            Status: {cell.status === "completed" ? "✅ Completed" : cell.status}
+          </div>
 
+          {!isRunning && (
+            <button onClick={() => handleRetry(cell)}>Retry</button>
+          )}
+        </div>
+      ))}
+
+      {/* Input */}
+      <div style={{ display: "flex", marginTop: 20 }}>
+        <input
+          style={{ flex: 1, padding: 10 }}
+          placeholder="Enter prompt..."
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+        />
         <button
           onClick={handleRun}
-          disabled={isRunning || !prompt.trim()}
-          title={
-            isRunning
-              ? "Execution in progress"
-              : !prompt.trim()
-              ? "Enter a prompt"
-              : ""
-          }
+          disabled={isRunning}
+          style={{ marginLeft: 10 }}
         >
           Run
         </button>

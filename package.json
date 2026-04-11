@@ -4,9 +4,11 @@
   "version": "0.0.0",
   "main": "./out/extension.js",
   "engines": {
-    "vscode": "^1.80.0"
+    "vscode": "^1.85.0"
   },
-  "activationEvents": ["onCommand:pact.open"],
+  "activationEvents": [
+    "onCommand:pact.open"
+  ],
   "scripts": {
     "dev": "vite",
     "build:web": "tsc --noEmit && vite build",
