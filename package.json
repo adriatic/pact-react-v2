@@ -1,70 +1,43 @@
 {
   "name": "pact-react-2",
-  "publisher": "nik",
-  "version": "0.0.0",
-  "main": "./out/extension.js",
+  "displayName": "PACT",
+  "publisher": "adriatic",
+  "version": "0.0.1",
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.80.0"
   },
   "activationEvents": [
-    "onCommand:pact.open"
+    "*"
   ],
-  "scripts": {
-    "dev": "vite",
-    "build:web": "tsc --noEmit && vite build",
-    "build:ext": "tsc -p tsconfig.node.json",
-    "build": "npm run build:web && npm run build:ext",
-    "clean": "rm -rf out dist",
-    "pact-dev": "zsh ./scripts/dev.sh",
-    "pact": "npm run clean && npm run build && code --extensionDevelopmentPath=. --disable-extensions"
-  },
+  "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "pact.open",
-        "title": "PACT: Open"
+        "command": "pact.setApiKey",
+        "title": "PACT: Set GPT Key"
+      },
+      {
+        "command": "pact.setClaudeKey",
+        "title": "PACT: Set Claude Key"
       }
-    ],
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "pact-view",
-          "title": "PACT",
-          "icon": "media/icon.svg"
-        }
-      ]
-    },
-    "views": {
-      "pact-view": [
-        {
-          "id": "pact.controlPanel",
-          "type": "webview",
-          "name": "PACT Control",
-          "icon": "media/icon.svg"
-        }
-      ]
-    }
+    ]
   },
-  "dependencies": {
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+  "scripts": {
+    "build": "npm run build:web && npm run build:ext",
+    "build:web": "node build-web.js",
+    "build:ext": "rm -f out/extension.js && tsc -p tsconfig.node.json"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.4",
-    "@types/node": "^24.12.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@types/vscode": "^1.110.0",
-    "@vitejs/plugin-react": "^6.0.1",
-    "autoprefixer": "^10.4.27",
-    "eslint": "^9.39.4",
-    "eslint-plugin-react-hooks": "^7.0.1",
-    "eslint-plugin-react-refresh": "^0.5.2",
-    "globals": "^17.4.0",
-    "postcss": "^8.5.8",
-    "tailwindcss": "^3.4.19",
-    "typescript": "~5.9.3",
-    "typescript-eslint": "^8.57.0",
-    "vite": "^8.0.1"
+    "@types/vscode": "^1.80.0",
+    "esbuild": "^0.28.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.89.0",
+    "openai": "^4.0.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
   }
 }

@@ -1,170 +1,162 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
 type Cell = {
   id: string;
-  parentId: string | null;
-  prompt: string;
-  response: string;
-  status: "running" | "completed" | "stopped";
+  parentId?: string;
+  content: string;
+  status: "running" | "done" | "error";
+  label?: string;
 };
 
-function generateId() {
-  return Math.random().toString(36).substring(2, 10);
+type TreeNode = Cell & {
+  children: TreeNode[];
+};
+
+declare global {
+  interface Window {
+    vscode: any;
+  }
 }
 
 export default function App() {
-  const [cells, setCells] = useState<Cell[]>([]);
+  const [cells, setCells] = useState<Record<string, Cell>>({});
   const [input, setInput] = useState("");
-  const [isRunning, setIsRunning] = useState(false);
 
-  // 👉 NEW: Editable Retry state
-  const [draftParentId, setDraftParentId] = useState<string | null>(null);
+  useEffect(() => {
+    window.addEventListener("message", (event) => {
+      const msg = event.data;
 
-  // ----------------------------------------
-  // Execution (mock streaming)
-  // ----------------------------------------
-  function runCell(newCell: Cell) {
-    setIsRunning(true);
+      switch (msg.type) {
+        case "cellStarted":
+          setCells((prev) => ({
+            ...prev,
+            [msg.cellId]: {
+              id: msg.cellId,
+              parentId: msg.parentId,
+              content: "",
+              status: "running",
+              label: msg.label
+            }
+          }));
+          break;
 
-    setCells((prev) => [...prev, newCell]);
+        case "cellStream":
+          setCells((prev) => ({
+            ...prev,
+            [msg.cellId]: {
+              ...prev[msg.cellId],
+              content: prev[msg.cellId].content + msg.chunk
+            }
+          }));
+          break;
 
-    const parent = cells.find((c) => c.id === newCell.parentId);
+        case "cellCompleted":
+          setCells((prev) => ({
+            ...prev,
+            [msg.cellId]: {
+              ...prev[msg.cellId],
+              status: "done"
+            }
+          }));
+          break;
+      }
+    });
+  }, []);
 
-    let response = "";
+  function runPrompt() {
+    if (!input.trim()) return;
 
-    const interval = setInterval(() => {
-      response += ".";
-
-      setCells((prev) =>
-        prev.map((c) => (c.id === newCell.id ? { ...c, response } : c)),
-      );
-    }, 100);
-
-    setTimeout(() => {
-      clearInterval(interval);
-
-      const finalResponse = parent
-        ? `Echo: ${parent.response} → ${newCell.prompt}`
-        : `Echo: ${newCell.prompt}`;
-
-      setCells((prev) =>
-        prev.map((c) =>
-          c.id === newCell.id
-            ? { ...c, response: finalResponse, status: "completed" }
-            : c,
-        ),
-      );
-
-      setIsRunning(false);
-    }, 800);
-  }
-
-  // ----------------------------------------
-  // Run button
-  // ----------------------------------------
-  function handleRun() {
-    if (!input.trim() || isRunning) return;
-
-    const parentId = draftParentId ?? null;
-
-    const newCell: Cell = {
-      id: generateId(),
-      parentId,
-      prompt: input,
-      response: "",
-      status: "running",
-    };
-
-    runCell(newCell);
+    window.vscode.postMessage({
+      type: "runPrompt",
+      promptText: input
+    });
 
     setInput("");
-    setDraftParentId(null); // ✅ exit retry mode
   }
 
-  // ----------------------------------------
-  // Retry (EDIT MODE, no execution)
-  // ----------------------------------------
-  function handleRetry(cell: Cell) {
-    if (isRunning) return;
-
-    setInput(cell.prompt);
-    setDraftParentId(cell.id);
+  function retry(cellId: string) {
+    window.vscode.postMessage({
+      type: "retryCell",
+      cellId
+    });
   }
 
-  // ----------------------------------------
-  // Cancel Retry
-  // ----------------------------------------
-  function cancelRetry() {
-    setDraftParentId(null);
-    setInput("");
+  function buildTree(): TreeNode[] {
+    const map: Record<string, TreeNode> = {};
+    const roots: TreeNode[] = [];
+
+    Object.values(cells).forEach((cell) => {
+      map[cell.id] = { ...cell, children: [] };
+    });
+
+    Object.values(map).forEach((node) => {
+      if (node.parentId && map[node.parentId]) {
+        map[node.parentId].children.push(node);
+      } else {
+        roots.push(node);
+      }
+    });
+
+    return roots;
   }
 
-  // ----------------------------------------
-  // Render
-  // ----------------------------------------
+  function renderNode(node: TreeNode, depth = 0) {
+    return (
+      <div key={node.id} style={{ marginLeft: depth * 20 }}>
+        <div
+          style={{
+            border: "1px solid gray",
+            padding: 10,
+            marginBottom: 10
+          }}
+        >
+          <div>
+            <strong>
+              {node.label ? `${node.label}` : "Cell"} {node.id}
+            </strong>
+          </div>
+
+          <pre>{node.content}</pre>
+          <div>Status: {node.status}</div>
+
+          <button onClick={() => retry(node.id)}>
+            Retry
+          </button>
+        </div>
+
+        {node.children.map((child) =>
+          renderNode(child, depth + 1)
+        )}
+      </div>
+    );
+  }
+
+  const tree = buildTree();
+
   return (
-    <div style={{ padding: 20, fontFamily: "sans-serif" }}>
-      <h2>PACT</h2>
+    <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
+      
+      <div
+        style={{
+          padding: 12,
+          borderBottom: "1px solid #444",
+          background: "#1e1e1e"
+        }}
+      >
+        <h2 style={{ margin: 0 }}>PACT</h2>
 
-      {/* 🔶 Retry Banner */}
-      {draftParentId && (
-        <div
-          style={{
-            padding: 10,
-            marginBottom: 10,
-            background: "#333",
-            color: "white",
-            display: "flex",
-            justifyContent: "space-between",
-          }}
-        >
-          <span>Editing retry of Cell {draftParentId}</span>
-          <button onClick={cancelRetry}>Cancel</button>
+        <div style={{ marginTop: 8 }}>
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            style={{ width: "70%" }}
+          />
+          <button onClick={runPrompt}>Run</button>
         </div>
-      )}
+      </div>
 
-      {/* Cells */}
-      {cells.map((cell) => (
-        <div
-          key={cell.id}
-          style={{
-            border: "1px solid #555",
-            padding: 10,
-            marginBottom: 10,
-          }}
-        >
-          <div>
-            <b>Cell</b>
-          </div>
-          <div>ID: {cell.id}</div>
-          <div>Parent: {cell.parentId ?? "None"}</div>
-          <div>Prompt: {cell.prompt}</div>
-          <div>Response: {cell.response}</div>
-          <div>
-            Status: {cell.status === "completed" ? "✅ Completed" : cell.status}
-          </div>
-
-          {!isRunning && (
-            <button onClick={() => handleRetry(cell)}>Retry</button>
-          )}
-        </div>
-      ))}
-
-      {/* Input */}
-      <div style={{ display: "flex", marginTop: 20 }}>
-        <input
-          style={{ flex: 1, padding: 10 }}
-          placeholder="Enter prompt..."
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-        />
-        <button
-          onClick={handleRun}
-          disabled={isRunning}
-          style={{ marginLeft: 10 }}
-        >
-          Run
-        </button>
+      <div style={{ padding: 12, overflowY: "auto", flex: 1 }}>
+        {tree.map((root) => renderNode(root))}
       </div>
     </div>
   );

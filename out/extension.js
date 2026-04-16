@@ -1,99 +1,144 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.activate = activate;
-exports.deactivate = deactivate;
-const vscode = require("vscode");
-const path = require("path");
-const fs = require("fs");
+const vscode = __importStar(require("vscode"));
+const path = __importStar(require("path"));
+const openai_1 = __importDefault(require("openai"));
+const sdk_1 = __importDefault(require("@anthropic-ai/sdk"));
 function activate(context) {
-    const disposable = vscode.commands.registerCommand("pact.open", () => {
-        const panel = vscode.window.createWebviewPanel("pact", "PACT", vscode.ViewColumn.One, {
-            enableScripts: true,
-            localResourceRoots: [
-                vscode.Uri.file(path.join(context.extensionPath, "dist")),
-            ],
+    // ✅ Register command to set Claude key
+    context.subscriptions.push(vscode.commands.registerCommand("pact.setClaudeKey", async () => {
+        const key = await vscode.window.showInputBox({
+            prompt: "Enter Claude (Anthropic) API Key",
+            ignoreFocusOut: true,
+            password: true,
         });
-        const distPath = path.join(context.extensionPath, "dist");
-        const indexHtmlPath = vscode.Uri.file(path.join(distPath, "index.html"));
-        panel.webview.html = getHtml(panel.webview, indexHtmlPath);
-        let isRunning = false;
-        let cancelRequested = false;
-        // 🧠 Store cell results for context lookup
-        const cellResults = new Map();
-        panel.webview.onDidReceiveMessage(async (message) => {
-            if (message.type === "runPrompt" || message.type === "retryCell") {
-                if (isRunning) {
-                    panel.webview.postMessage({ type: "busy" });
-                    return;
-                }
-                const prompt = message.prompt;
-                const parentId = message.parentId || null;
-                isRunning = true;
-                cancelRequested = false;
-                const cellId = generateId();
-                panel.webview.postMessage({
-                    type: "startCell",
-                    id: cellId,
-                    parentId,
-                    prompt,
-                });
-                panel.webview.postMessage({ type: "running" });
-                try {
-                    // 🧠 Build context
-                    let base = `Echo: ${prompt}`;
-                    if (parentId && cellResults.has(parentId)) {
-                        const parentResponse = cellResults.get(parentId);
-                        base = `Echo: ${parentResponse} → ${prompt}`;
-                    }
-                    const words = base.split(" ");
-                    let current = "";
-                    for (const word of words) {
-                        if (cancelRequested)
-                            break;
-                        await delay(500);
-                        if (cancelRequested)
-                            break;
-                        current += (current ? " " : "") + word;
+        if (key) {
+            await context.secrets.store("ANTHROPIC_API_KEY", key);
+            vscode.window.showInformationMessage("Claude API key saved");
+        }
+    }));
+    const panel = vscode.window.createWebviewPanel("pact", "PACT", vscode.ViewColumn.One, {
+        enableScripts: true,
+        localResourceRoots: [
+            vscode.Uri.file(path.join(context.extensionPath, "out")),
+        ],
+    });
+    const scriptUri = panel.webview.asWebviewUri(vscode.Uri.file(path.join(context.extensionPath, "out", "index.js")));
+    panel.webview.html = `
+    <!DOCTYPE html>
+    <html>
+      <body>
+        <div id="root"></div>
+
+        <script>
+          (function () {
+            const vscode = acquireVsCodeApi();
+            window.vscode = vscode;
+            window.acquireVsCodeApi = () => vscode;
+          })();
+        </script>
+
+        <script src="${scriptUri}"></script>
+      </body>
+    </html>
+  `;
+    panel.webview.onDidReceiveMessage(async (message) => {
+        if (message.type === "runPrompt") {
+            let prompt = message.promptText;
+            let useClaude = false;
+            if (prompt.startsWith("/claude")) {
+                useClaude = true;
+                prompt = prompt.replace("/claude", "").trim();
+            }
+            try {
+                if (useClaude) {
+                    const apiKey = await context.secrets.get("ANTHROPIC_API_KEY");
+                    if (!apiKey) {
                         panel.webview.postMessage({
-                            type: "stream",
-                            id: cellId,
-                            chunk: current,
+                            type: "response",
+                            text: "ERROR: Claude API key not set",
                         });
+                        return;
                     }
-                    // 🧠 Store final response
-                    cellResults.set(cellId, current);
+                    const anthropic = new sdk_1.default({ apiKey });
+                    const response = await anthropic.messages.create({
+                        model: "claude-sonnet-4-6",
+                        max_tokens: 500,
+                        messages: [{ role: "user", content: prompt }],
+                    });
+                    const text = response.content?.[0]?.type === "text"
+                        ? response.content[0].text
+                        : "No Claude response";
                     panel.webview.postMessage({
-                        type: "completeCell",
-                        id: cellId,
-                        status: cancelRequested ? "stopped" : "completed",
+                        type: "response",
+                        text,
                     });
                 }
-                finally {
-                    isRunning = false;
-                    cancelRequested = false;
-                    panel.webview.postMessage({ type: "idle" });
+                else {
+                    const apiKey = await context.secrets.get("OPENAI_API_KEY");
+                    if (!apiKey) {
+                        panel.webview.postMessage({
+                            type: "response",
+                            text: "ERROR: OpenAI API key not set",
+                        });
+                        return;
+                    }
+                    const openai = new openai_1.default({ apiKey });
+                    const response = await openai.responses.create({
+                        model: "gpt-4.1-mini",
+                        input: prompt,
+                    });
+                    const text = response.output_text ||
+                        "No response text returned";
+                    panel.webview.postMessage({
+                        type: "response",
+                        text,
+                    });
                 }
             }
-            if (message.type === "cancel") {
-                cancelRequested = true;
+            catch (err) {
+                panel.webview.postMessage({
+                    type: "response",
+                    text: "ERROR: " + err.message,
+                });
             }
-        });
+        }
     });
-    context.subscriptions.push(disposable);
 }
-function generateId() {
-    return Math.random().toString(36).substring(2, 10);
-}
-function delay(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
-function getHtml(webview, htmlUri) {
-    let html = fs.readFileSync(htmlUri.fsPath, "utf8");
-    html = html.replace(/(<script.*?src="|<link.*?href=")(.*?)"/g, (match, p1, p2) => {
-        const resourcePath = vscode.Uri.file(path.join(path.dirname(htmlUri.fsPath), p2));
-        const webviewUri = webview.asWebviewUri(resourcePath);
-        return `${p1}${webviewUri.toString()}"`;
-    });
-    return html;
-}
-function deactivate() { }

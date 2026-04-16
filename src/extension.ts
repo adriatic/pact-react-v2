@@ -1,133 +1,136 @@
 import * as vscode from "vscode";
 import * as path from "path";
-import * as fs from "fs";
-
-console.log("Node version:", process.version);
+import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 
 export function activate(context: vscode.ExtensionContext) {
-  const disposable = vscode.commands.registerCommand("pact.open", () => {
-    const panel = vscode.window.createWebviewPanel(
-      "pact",
-      "PACT",
-      vscode.ViewColumn.One,
-      {
-        enableScripts: true,
-        localResourceRoots: [
-          vscode.Uri.file(path.join(context.extensionPath, "dist")),
-        ],
-      },
-    );
 
-    const distPath = path.join(context.extensionPath, "dist");
-    const indexHtmlPath = vscode.Uri.file(path.join(distPath, "index.html"));
+  // ✅ Register command to set Claude key
+  context.subscriptions.push(
+    vscode.commands.registerCommand("pact.setClaudeKey", async () => {
+      const key = await vscode.window.showInputBox({
+        prompt: "Enter Claude (Anthropic) API Key",
+        ignoreFocusOut: true,
+        password: true,
+      });
 
-    panel.webview.html = getHtml(panel.webview, indexHtmlPath);
-
-    let isRunning = false;
-    let cancelRequested = false;
-
-    // 🧠 Store cell results for context lookup
-    const cellResults = new Map<string, string>();
-
-    panel.webview.onDidReceiveMessage(async (message) => {
-      if (message.type === "runPrompt" || message.type === "retryCell") {
-        if (isRunning) {
-          panel.webview.postMessage({ type: "busy" });
-          return;
-        }
-
-        const prompt = message.prompt;
-        const parentId = message.parentId || null;
-
-        isRunning = true;
-        cancelRequested = false;
-
-        const cellId = generateId();
-
-        panel.webview.postMessage({
-          type: "startCell",
-          id: cellId,
-          parentId,
-          prompt,
-        });
-
-        panel.webview.postMessage({ type: "running" });
-
-        try {
-          // 🧠 Build context
-          let base = `Echo: ${prompt}`;
-
-          if (parentId && cellResults.has(parentId)) {
-            const parentResponse = cellResults.get(parentId);
-            base = `Echo: ${parentResponse} → ${prompt}`;
-          }
-
-          const words = base.split(" ");
-          let current = "";
-
-          for (const word of words) {
-            if (cancelRequested) break;
-
-            await delay(500);
-
-            if (cancelRequested) break;
-
-            current += (current ? " " : "") + word;
-
-            panel.webview.postMessage({
-              type: "stream",
-              id: cellId,
-              chunk: current,
-            });
-          }
-
-          // 🧠 Store final response
-          cellResults.set(cellId, current);
-
-          panel.webview.postMessage({
-            type: "completeCell",
-            id: cellId,
-            status: cancelRequested ? "stopped" : "completed",
-          });
-        } finally {
-          isRunning = false;
-          cancelRequested = false;
-          panel.webview.postMessage({ type: "idle" });
-        }
+      if (key) {
+        await context.secrets.store("ANTHROPIC_API_KEY", key);
+        vscode.window.showInformationMessage("Claude API key saved");
       }
-
-      if (message.type === "cancel") {
-        cancelRequested = true;
-      }
-    });
-  });
-
-  context.subscriptions.push(disposable);
-}
-
-function generateId(): string {
-  return Math.random().toString(36).substring(2, 10);
-}
-
-function delay(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function getHtml(webview: vscode.Webview, htmlUri: vscode.Uri): string {
-  let html = fs.readFileSync(htmlUri.fsPath, "utf8");
-
-  html = html.replace(
-    /(<script.*?src="|<link.*?href=")(.*?)"/g,
-    (match: string, p1: string, p2: string) => {
-      const resourcePath = vscode.Uri.file(
-        path.join(path.dirname(htmlUri.fsPath), p2),
-      );
-      const webviewUri = webview.asWebviewUri(resourcePath);
-      return `${p1}${webviewUri.toString()}"`;
-    },
+    })
   );
 
-  return html;
-}
+  const panel = vscode.window.createWebviewPanel(
+    "pact",
+    "PACT",
+    vscode.ViewColumn.One,
+    {
+      enableScripts: true,
+      localResourceRoots: [
+        vscode.Uri.file(path.join(context.extensionPath, "out")),
+      ],
+    }
+  );
 
-export function deactivate() {}
+  const scriptUri = panel.webview.asWebviewUri(
+    vscode.Uri.file(
+      path.join(context.extensionPath, "out", "index.js")
+    )
+  );
+
+  panel.webview.html = `
+    <!DOCTYPE html>
+    <html>
+      <body>
+        <div id="root"></div>
+
+        <script>
+          (function () {
+            const vscode = acquireVsCodeApi();
+            window.vscode = vscode;
+            window.acquireVsCodeApi = () => vscode;
+          })();
+        </script>
+
+        <script src="${scriptUri}"></script>
+      </body>
+    </html>
+  `;
+
+  panel.webview.onDidReceiveMessage(async (message) => {
+    if (message.type === "runPrompt") {
+      let prompt = message.promptText;
+
+      let useClaude = false;
+
+      if (prompt.startsWith("/claude")) {
+        useClaude = true;
+        prompt = prompt.replace("/claude", "").trim();
+      }
+
+      try {
+        if (useClaude) {
+          const apiKey = await context.secrets.get("ANTHROPIC_API_KEY");
+
+          if (!apiKey) {
+            panel.webview.postMessage({
+              type: "response",
+              text: "ERROR: Claude API key not set",
+            });
+            return;
+          }
+
+          const anthropic = new Anthropic({ apiKey });
+
+          const response = await anthropic.messages.create({
+            model: "claude-sonnet-4-6",
+            max_tokens: 500,
+            messages: [{ role: "user", content: prompt }],
+          });
+
+          const text =
+            response.content?.[0]?.type === "text"
+              ? response.content[0].text
+              : "No Claude response";
+
+          panel.webview.postMessage({
+            type: "response",
+            text,
+          });
+        } else {
+          const apiKey = await context.secrets.get("OPENAI_API_KEY");
+
+          if (!apiKey) {
+            panel.webview.postMessage({
+              type: "response",
+              text: "ERROR: OpenAI API key not set",
+            });
+            return;
+          }
+
+          const openai = new OpenAI({ apiKey });
+
+          const response = await openai.responses.create({
+            model: "gpt-4.1-mini",
+            input: prompt,
+          });
+
+          const text =
+            response.output_text ||
+            "No response text returned";
+
+          panel.webview.postMessage({
+            type: "response",
+            text,
+          });
+        }
+      } catch (err: any) {
+        panel.webview.postMessage({
+          type: "response",
+          text: "ERROR: " + err.message,
+        });
+      }
+    }
+  });
+}
