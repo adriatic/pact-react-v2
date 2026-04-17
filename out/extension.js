@@ -42,18 +42,7 @@ const path = __importStar(require("path"));
 const openai_1 = __importDefault(require("openai"));
 const sdk_1 = __importDefault(require("@anthropic-ai/sdk"));
 function activate(context) {
-    // ✅ Register command to set Claude key
-    context.subscriptions.push(vscode.commands.registerCommand("pact.setClaudeKey", async () => {
-        const key = await vscode.window.showInputBox({
-            prompt: "Enter Claude (Anthropic) API Key",
-            ignoreFocusOut: true,
-            password: true,
-        });
-        if (key) {
-            await context.secrets.store("ANTHROPIC_API_KEY", key);
-            vscode.window.showInformationMessage("Claude API key saved");
-        }
-    }));
+    const cellStore = {};
     const panel = vscode.window.createWebviewPanel("pact", "PACT", vscode.ViewColumn.One, {
         enableScripts: true,
         localResourceRoots: [
@@ -79,66 +68,81 @@ function activate(context) {
       </body>
     </html>
   `;
-    panel.webview.onDidReceiveMessage(async (message) => {
-        if (message.type === "runPrompt") {
-            let prompt = message.promptText;
-            let useClaude = false;
-            if (prompt.startsWith("/claude")) {
-                useClaude = true;
-                prompt = prompt.replace("/claude", "").trim();
-            }
-            try {
-                if (useClaude) {
-                    const apiKey = await context.secrets.get("ANTHROPIC_API_KEY");
-                    if (!apiKey) {
-                        panel.webview.postMessage({
-                            type: "response",
-                            text: "ERROR: Claude API key not set",
-                        });
-                        return;
-                    }
-                    const anthropic = new sdk_1.default({ apiKey });
-                    const response = await anthropic.messages.create({
-                        model: "claude-sonnet-4-6",
-                        max_tokens: 500,
-                        messages: [{ role: "user", content: prompt }],
-                    });
-                    const text = response.content?.[0]?.type === "text"
+    async function executePrompt(prompt, parentId) {
+        let useClaude = false;
+        if (prompt.startsWith("/claude")) {
+            useClaude = true;
+            prompt = prompt.replace("/claude", "").trim();
+        }
+        const cellId = Date.now().toString();
+        cellStore[cellId] = { prompt, parentId };
+        panel.webview.postMessage({
+            type: "cellStarted",
+            cellId,
+            parentId,
+            label: useClaude ? "Claude" : "GPT"
+        });
+        try {
+            let text = "";
+            if (useClaude) {
+                const apiKey = await context.secrets.get("ANTHROPIC_API_KEY");
+                if (!apiKey)
+                    throw new Error("Claude API key not set");
+                const anthropic = new sdk_1.default({ apiKey });
+                const response = await anthropic.messages.create({
+                    model: "claude-sonnet-4-6",
+                    max_tokens: 500,
+                    messages: [{ role: "user", content: prompt }],
+                });
+                text =
+                    response.content?.[0]?.type === "text"
                         ? response.content[0].text
                         : "No Claude response";
-                    panel.webview.postMessage({
-                        type: "response",
-                        text,
-                    });
-                }
-                else {
-                    const apiKey = await context.secrets.get("OPENAI_API_KEY");
-                    if (!apiKey) {
-                        panel.webview.postMessage({
-                            type: "response",
-                            text: "ERROR: OpenAI API key not set",
-                        });
-                        return;
-                    }
-                    const openai = new openai_1.default({ apiKey });
-                    const response = await openai.responses.create({
-                        model: "gpt-4.1-mini",
-                        input: prompt,
-                    });
-                    const text = response.output_text ||
-                        "No response text returned";
-                    panel.webview.postMessage({
-                        type: "response",
-                        text,
-                    });
-                }
             }
-            catch (err) {
-                panel.webview.postMessage({
-                    type: "response",
-                    text: "ERROR: " + err.message,
+            else {
+                const apiKey = await context.secrets.get("OPENAI_API_KEY");
+                if (!apiKey)
+                    throw new Error("OpenAI API key not set");
+                const openai = new openai_1.default({ apiKey });
+                const response = await openai.responses.create({
+                    model: "gpt-4.1-mini",
+                    input: prompt,
                 });
+                text =
+                    response.output_text ||
+                        "No response text returned";
             }
+            panel.webview.postMessage({
+                type: "cellStream",
+                cellId,
+                chunk: text
+            });
+            panel.webview.postMessage({
+                type: "cellCompleted",
+                cellId
+            });
+        }
+        catch (err) {
+            panel.webview.postMessage({
+                type: "cellStream",
+                cellId,
+                chunk: "ERROR: " + err.message
+            });
+            panel.webview.postMessage({
+                type: "cellCompleted",
+                cellId
+            });
+        }
+    }
+    panel.webview.onDidReceiveMessage(async (message) => {
+        if (message.type === "runPrompt") {
+            await executePrompt(message.promptText);
+        }
+        if (message.type === "retryCell") {
+            const original = cellStore[message.cellId];
+            if (!original)
+                return;
+            await executePrompt(original.prompt, message.cellId);
         }
     });
 }

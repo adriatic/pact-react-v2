@@ -767,7 +767,7 @@
   var require_react_dom_production = __commonJS({
     "node_modules/react-dom/cjs/react-dom.production.js"(exports) {
       "use strict";
-      var React2 = require_react();
+      var React3 = require_react();
       function formatProdErrorMessage(code) {
         var url = "https://react.dev/errors/" + code;
         if (1 < arguments.length) {
@@ -807,7 +807,7 @@
           implementation
         };
       }
-      var ReactSharedInternals = React2.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+      var ReactSharedInternals = React3.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       function getCrossOriginStringAs(as, input) {
         if ("font" === as) return "";
         if ("string" === typeof input)
@@ -943,7 +943,7 @@
     "node_modules/react-dom/cjs/react-dom-client.production.js"(exports) {
       "use strict";
       var Scheduler = require_scheduler();
-      var React2 = require_react();
+      var React3 = require_react();
       var ReactDOM = require_react_dom();
       function formatProdErrorMessage(code) {
         var url = "https://react.dev/errors/" + code;
@@ -1134,7 +1134,7 @@
         return null;
       }
       var isArrayImpl = Array.isArray;
-      var ReactSharedInternals = React2.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+      var ReactSharedInternals = React3.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       var ReactDOMSharedInternals = ReactDOM.__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       var sharedNotPendingObject = {
         pending: false,
@@ -12580,7 +12580,7 @@
           0 === i && attemptExplicitHydrationTarget(target);
         }
       };
-      var isomorphicReactPackageVersion$jscomp$inline_1840 = React2.version;
+      var isomorphicReactPackageVersion$jscomp$inline_1840 = React3.version;
       if ("19.2.5" !== isomorphicReactPackageVersion$jscomp$inline_1840)
         throw Error(
           formatProdErrorMessage(
@@ -12706,37 +12706,123 @@
   });
 
   // src/index.tsx
-  var import_react = __toESM(require_react());
+  var import_react2 = __toESM(require_react());
   var import_client = __toESM(require_client());
+
+  // src/app/App.tsx
+  var import_react = __toESM(require_react());
   function App() {
-    const [prompt, setPrompt] = (0, import_react.useState)("");
-    const [response, setResponse] = (0, import_react.useState)("");
+    const [cells, setCells] = (0, import_react.useState)({});
+    const [input, setInput] = (0, import_react.useState)("");
     (0, import_react.useEffect)(() => {
       window.addEventListener("message", (event) => {
-        const message = event.data;
-        if (message.type === "response") {
-          setResponse(message.text);
+        const msg = event.data;
+        switch (msg.type) {
+          case "cellStarted":
+            setCells((prev) => ({
+              ...prev,
+              [msg.cellId]: {
+                id: msg.cellId,
+                parentId: msg.parentId,
+                content: "",
+                status: "running",
+                label: msg.label
+              }
+            }));
+            break;
+          case "cellStream":
+            setCells((prev) => ({
+              ...prev,
+              [msg.cellId]: {
+                ...prev[msg.cellId],
+                content: prev[msg.cellId].content + msg.chunk
+              }
+            }));
+            break;
+          case "cellCompleted":
+            setCells((prev) => ({
+              ...prev,
+              [msg.cellId]: {
+                ...prev[msg.cellId],
+                status: "done"
+              }
+            }));
+            break;
         }
       });
     }, []);
-    const run = () => {
-      const vscode = window.vscode;
-      vscode.postMessage({
+    function runPrompt() {
+      if (!input.trim()) return;
+      window.vscode.postMessage({
         type: "runPrompt",
-        promptText: prompt
+        promptText: input
       });
-      setPrompt("");
-    };
-    return /* @__PURE__ */ import_react.default.createElement("div", null, /* @__PURE__ */ import_react.default.createElement("h2", null, "PACT"), /* @__PURE__ */ import_react.default.createElement(
-      "textarea",
+      setInput("");
+    }
+    function retry(cellId) {
+      window.vscode.postMessage({
+        type: "retryCell",
+        cellId
+      });
+    }
+    function buildTree() {
+      const map = {};
+      const roots = [];
+      Object.values(cells).forEach((cell) => {
+        map[cell.id] = { ...cell, children: [] };
+      });
+      Object.values(map).forEach((node) => {
+        if (node.parentId && map[node.parentId]) {
+          map[node.parentId].children.push(node);
+        } else {
+          roots.push(node);
+        }
+      });
+      return roots;
+    }
+    function renderNode(node, depth = 0) {
+      return /* @__PURE__ */ import_react.default.createElement("div", { key: node.id, style: { marginLeft: depth * 20 } }, /* @__PURE__ */ import_react.default.createElement(
+        "div",
+        {
+          style: {
+            border: "1px solid gray",
+            padding: 10,
+            marginBottom: 10
+          }
+        },
+        /* @__PURE__ */ import_react.default.createElement("div", null, /* @__PURE__ */ import_react.default.createElement("strong", null, node.label ? `${node.label}` : "Cell", " ", node.id)),
+        /* @__PURE__ */ import_react.default.createElement("pre", null, node.content),
+        /* @__PURE__ */ import_react.default.createElement("div", null, "Status: ", node.status),
+        /* @__PURE__ */ import_react.default.createElement("button", { onClick: () => retry(node.id) }, "Retry")
+      ), node.children.map(
+        (child) => renderNode(child, depth + 1)
+      ));
+    }
+    const tree = buildTree();
+    return /* @__PURE__ */ import_react.default.createElement("div", { style: { height: "100vh", display: "flex", flexDirection: "column" } }, /* @__PURE__ */ import_react.default.createElement(
+      "div",
       {
-        value: prompt,
-        onChange: (e) => setPrompt(e.target.value)
-      }
-    ), /* @__PURE__ */ import_react.default.createElement("button", { onClick: run }, "Run"), /* @__PURE__ */ import_react.default.createElement("div", null, response));
+        style: {
+          padding: 12,
+          borderBottom: "1px solid #444",
+          background: "#1e1e1e"
+        }
+      },
+      /* @__PURE__ */ import_react.default.createElement("h2", { style: { margin: 0 } }, "PACT"),
+      /* @__PURE__ */ import_react.default.createElement("div", { style: { marginTop: 8 } }, /* @__PURE__ */ import_react.default.createElement(
+        "input",
+        {
+          value: input,
+          onChange: (e) => setInput(e.target.value),
+          style: { width: "70%" }
+        }
+      ), /* @__PURE__ */ import_react.default.createElement("button", { onClick: runPrompt }, "Run"))
+    ), /* @__PURE__ */ import_react.default.createElement("div", { style: { padding: 12, overflowY: "auto", flex: 1 } }, tree.map((root2) => renderNode(root2))));
   }
+
+  // src/index.tsx
   var root = (0, import_client.createRoot)(document.getElementById("root"));
-  root.render(/* @__PURE__ */ import_react.default.createElement(App, null));
+  root.render(/* @__PURE__ */ import_react2.default.createElement(App, null));
 })();
 /*! Bundled license information:
 
