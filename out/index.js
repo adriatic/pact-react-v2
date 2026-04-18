@@ -12712,59 +12712,69 @@
   // src/app/App.tsx
   var import_react = __toESM(require_react());
   function App() {
+    const vscode = acquireVsCodeApi();
     const [cells, setCells] = (0, import_react.useState)({});
-    const [input, setInput] = (0, import_react.useState)("");
+    const [prompt, setPrompt] = (0, import_react.useState)("");
+    function run() {
+      vscode.postMessage({
+        type: "RUN_REQUESTED",
+        prompt
+      });
+    }
+    function retry(cellId) {
+      vscode.postMessage({
+        type: "RETRY_CELL",
+        cellId
+      });
+    }
     (0, import_react.useEffect)(() => {
-      window.addEventListener("message", (event) => {
-        const msg = event.data;
-        switch (msg.type) {
+      const handler = (event) => {
+        const data = event.data;
+        switch (data.type) {
           case "cellStarted":
             setCells((prev) => ({
               ...prev,
-              [msg.cellId]: {
-                id: msg.cellId,
-                parentId: msg.parentId,
-                content: "",
-                status: "running",
-                label: msg.label
+              [data.cellId]: {
+                id: data.cellId,
+                parentId: data.parentId,
+                label: data.label,
+                response: "",
+                status: "running"
               }
             }));
             break;
           case "cellStream":
             setCells((prev) => ({
               ...prev,
-              [msg.cellId]: {
-                ...prev[msg.cellId],
-                content: prev[msg.cellId].content + msg.chunk
+              [data.cellId]: {
+                ...prev[data.cellId],
+                response: (prev[data.cellId]?.response || "") + data.chunk
               }
             }));
             break;
           case "cellCompleted":
             setCells((prev) => ({
               ...prev,
-              [msg.cellId]: {
-                ...prev[msg.cellId],
+              [data.cellId]: {
+                ...prev[data.cellId],
                 status: "done"
               }
             }));
             break;
+          case "cellError":
+            setCells((prev) => ({
+              ...prev,
+              [data.cellId]: {
+                ...prev[data.cellId],
+                status: "error"
+              }
+            }));
+            break;
         }
-      });
+      };
+      window.addEventListener("message", handler);
+      return () => window.removeEventListener("message", handler);
     }, []);
-    function runPrompt() {
-      if (!input.trim()) return;
-      window.vscode.postMessage({
-        type: "runPrompt",
-        promptText: input
-      });
-      setInput("");
-    }
-    function retry(cellId) {
-      window.vscode.postMessage({
-        type: "retryCell",
-        cellId
-      });
-    }
     function buildTree() {
       const map = {};
       const roots = [];
@@ -12785,39 +12795,27 @@
         "div",
         {
           style: {
-            border: "1px solid gray",
+            border: "1px solid #888",
             padding: 10,
             marginBottom: 10
           }
         },
-        /* @__PURE__ */ import_react.default.createElement("div", null, /* @__PURE__ */ import_react.default.createElement("strong", null, node.label ? `${node.label}` : "Cell", " ", node.id)),
-        /* @__PURE__ */ import_react.default.createElement("pre", null, node.content),
+        /* @__PURE__ */ import_react.default.createElement("div", null, /* @__PURE__ */ import_react.default.createElement("strong", null, node.label || "GPT")),
+        /* @__PURE__ */ import_react.default.createElement("pre", null, node.response),
         /* @__PURE__ */ import_react.default.createElement("div", null, "Status: ", node.status),
-        /* @__PURE__ */ import_react.default.createElement("button", { onClick: () => retry(node.id) }, "Retry")
-      ), node.children.map(
-        (child) => renderNode(child, depth + 1)
-      ));
+        node.status === "done" && /* @__PURE__ */ import_react.default.createElement("button", { onClick: () => retry(node.id) }, "Retry")
+      ), node.children.map((child) => renderNode(child, depth + 1)));
     }
     const tree = buildTree();
-    return /* @__PURE__ */ import_react.default.createElement("div", { style: { height: "100vh", display: "flex", flexDirection: "column" } }, /* @__PURE__ */ import_react.default.createElement(
-      "div",
+    return /* @__PURE__ */ import_react.default.createElement("div", { style: { padding: 20, fontFamily: "monospace" } }, /* @__PURE__ */ import_react.default.createElement("h2", null, "PACT"), /* @__PURE__ */ import_react.default.createElement("div", { style: { marginBottom: 20 } }, /* @__PURE__ */ import_react.default.createElement(
+      "input",
       {
-        style: {
-          padding: 12,
-          borderBottom: "1px solid #444",
-          background: "#1e1e1e"
-        }
-      },
-      /* @__PURE__ */ import_react.default.createElement("h2", { style: { margin: 0 } }, "PACT"),
-      /* @__PURE__ */ import_react.default.createElement("div", { style: { marginTop: 8 } }, /* @__PURE__ */ import_react.default.createElement(
-        "input",
-        {
-          value: input,
-          onChange: (e) => setInput(e.target.value),
-          style: { width: "70%" }
-        }
-      ), /* @__PURE__ */ import_react.default.createElement("button", { onClick: runPrompt }, "Run"))
-    ), /* @__PURE__ */ import_react.default.createElement("div", { style: { padding: 12, overflowY: "auto", flex: 1 } }, tree.map((root2) => renderNode(root2))));
+        value: prompt,
+        onChange: (e) => setPrompt(e.target.value),
+        placeholder: "Enter prompt",
+        style: { width: "70%", marginRight: 10 }
+      }
+    ), /* @__PURE__ */ import_react.default.createElement("button", { onClick: run }, "Run")), /* @__PURE__ */ import_react.default.createElement("div", null, tree.map((root2) => renderNode(root2))));
   }
 
   // src/index.tsx

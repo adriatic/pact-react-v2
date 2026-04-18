@@ -1,16 +1,10 @@
 import * as vscode from "vscode";
 import * as path from "path";
-import OpenAI from "openai";
-import Anthropic from "@anthropic-ai/sdk";
-
-type CellState = {
-  prompt: string;
-  parentId?: string;
-};
+import { eventBus } from "./execution/eventBus";
+import { ExecutionEngine } from "./execution/ExecutionEngine";
+import { LLMRouter } from "./llm/llmRouter";
 
 export function activate(context: vscode.ExtensionContext) {
-  const cellStore: Record<string, CellState> = {};
-
   const panel = vscode.window.createWebviewPanel(
     "pact",
     "PACT",
@@ -48,95 +42,36 @@ export function activate(context: vscode.ExtensionContext) {
     </html>
   `;
 
-  async function executePrompt(prompt: string, parentId?: string) {
-    let useClaude = false;
+  // Initialize router with API keys
+  const router = new LLMRouter();
 
-    if (prompt.startsWith("/claude")) {
-      useClaude = true;
-      prompt = prompt.replace("/claude", "").trim();
-    }
-
-    const cellId = Date.now().toString();
-
-    cellStore[cellId] = { prompt, parentId };
-
-    panel.webview.postMessage({
-      type: "cellStarted",
-      cellId,
-      parentId,
-      label: useClaude ? "Claude" : "GPT"
-    });
-
-    try {
-      let text = "";
-
-      if (useClaude) {
-        const apiKey = await context.secrets.get("ANTHROPIC_API_KEY");
-        if (!apiKey) throw new Error("Claude API key not set");
-
-        const anthropic = new Anthropic({ apiKey });
-
-        const response = await anthropic.messages.create({
-          model: "claude-sonnet-4-6",
-          max_tokens: 500,
-          messages: [{ role: "user", content: prompt }],
-        });
-
-        text =
-          response.content?.[0]?.type === "text"
-            ? response.content[0].text
-            : "No Claude response";
-      } else {
-        const apiKey = await context.secrets.get("OPENAI_API_KEY");
-        if (!apiKey) throw new Error("OpenAI API key not set");
-
-        const openai = new OpenAI({ apiKey });
-
-        const response = await openai.responses.create({
-          model: "gpt-4.1-mini",
-          input: prompt,
-        });
-
-        text =
-          response.output_text ||
-          "No response text returned";
-      }
-
-      panel.webview.postMessage({
-        type: "cellStream",
-        cellId,
-        chunk: text
-      });
-
-      panel.webview.postMessage({
-        type: "cellCompleted",
-        cellId
-      });
-
-    } catch (err: any) {
-      panel.webview.postMessage({
-        type: "cellStream",
-        cellId,
-        chunk: "ERROR: " + err.message
-      });
-
-      panel.webview.postMessage({
-        type: "cellCompleted",
-        cellId
-      });
-    }
+  async function initRouter() {
+    const gptKey = await context.secrets.get("OPENAI_API_KEY");
+    const claudeKey = await context.secrets.get("ANTHROPIC_API_KEY");
+    router.setApiKey(gptKey);
+    router.setClaudeKey(claudeKey);
   }
 
+  initRouter();
+
+  // Instantiate engine
+  const engine = new ExecutionEngine(router);
+
+  // Subscribe to event bus — forward all events to webview
+  eventBus.subscribe((event) => {
+    panel.webview.postMessage(event);
+  });
+
+  // Handle messages from webview
   panel.webview.onDidReceiveMessage(async (message) => {
-    if (message.type === "runPrompt") {
-      await executePrompt(message.promptText);
+    console.log("EXT RECEIVED:", message);
+
+    if (message.type === "RUN_REQUESTED") {
+      await engine.runPrompt(message.prompt);
     }
 
-    if (message.type === "retryCell") {
-      const original = cellStore[message.cellId];
-      if (!original) return;
-
-      await executePrompt(original.prompt, message.cellId);
+    if (message.type === "RETRY_CELL") {
+      await engine.retryCell(message.cellId);
     }
   });
 }

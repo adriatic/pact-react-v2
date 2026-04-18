@@ -23,7 +23,7 @@
     ]
   },
   "scripts": {
-    "build": "npm run build:web && npm run build:ext",
+    "build": "echo \"Build started at $(date)\" && npm run build:web && npm run build:ext && echo \"Build completed at $(date)\"",
     "build:web": "node build-web.js",
     "build:ext": "rm -f out/extension.js && tsc -p tsconfig.node.json"
   },

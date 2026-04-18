@@ -1,85 +1,97 @@
 import React, { useEffect, useState } from "react";
 
+type Event =
+  | { type: "cellStarted"; cellId: string; parentId?: string; label?: string }
+  | { type: "cellStream"; cellId: string; chunk: string }
+  | { type: "cellCompleted"; cellId: string }
+  | { type: "cellError"; cellId: string; error: string };
+
 type Cell = {
   id: string;
   parentId?: string;
-  content: string;
-  status: "running" | "done" | "error";
   label?: string;
+  response: string;
+  status?: string;
 };
 
 type TreeNode = Cell & {
   children: TreeNode[];
 };
 
-declare global {
-  interface Window {
-    vscode: any;
-  }
-}
+declare const acquireVsCodeApi: any;
 
 export default function App() {
+  const vscode = acquireVsCodeApi();
   const [cells, setCells] = useState<Record<string, Cell>>({});
-  const [input, setInput] = useState("");
+  const [prompt, setPrompt] = useState("");
+
+  function run() {
+    vscode.postMessage({
+      type: "RUN_REQUESTED",
+      prompt,
+    });
+  }
+
+  function retry(cellId: string) {
+    vscode.postMessage({
+      type: "RETRY_CELL",
+      cellId,
+    });
+  }
 
   useEffect(() => {
-    window.addEventListener("message", (event) => {
-      const msg = event.data;
+    const handler = (event: MessageEvent) => {
+      const data: Event = event.data;
 
-      switch (msg.type) {
+      switch (data.type) {
         case "cellStarted":
           setCells((prev) => ({
             ...prev,
-            [msg.cellId]: {
-              id: msg.cellId,
-              parentId: msg.parentId,
-              content: "",
+            [data.cellId]: {
+              id: data.cellId,
+              parentId: data.parentId,
+              label: data.label,
+              response: "",
               status: "running",
-              label: msg.label
-            }
+            },
           }));
           break;
 
         case "cellStream":
           setCells((prev) => ({
             ...prev,
-            [msg.cellId]: {
-              ...prev[msg.cellId],
-              content: prev[msg.cellId].content + msg.chunk
-            }
+            [data.cellId]: {
+              ...prev[data.cellId],
+              response: (prev[data.cellId]?.response || "") + data.chunk,
+            },
           }));
           break;
 
         case "cellCompleted":
           setCells((prev) => ({
             ...prev,
-            [msg.cellId]: {
-              ...prev[msg.cellId],
-              status: "done"
-            }
+            [data.cellId]: {
+              ...prev[data.cellId],
+              status: "done",
+            },
+          }));
+          break;
+
+        case "cellError":
+          setCells((prev) => ({
+            ...prev,
+            [data.cellId]: {
+              ...prev[data.cellId],
+              status: "error",
+            },
           }));
           break;
       }
-    });
+    };
+
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
   }, []);
-
-  function runPrompt() {
-    if (!input.trim()) return;
-
-    window.vscode.postMessage({
-      type: "runPrompt",
-      promptText: input
-    });
-
-    setInput("");
-  }
-
-  function retry(cellId: string) {
-    window.vscode.postMessage({
-      type: "retryCell",
-      cellId
-    });
-  }
 
   function buildTree(): TreeNode[] {
     const map: Record<string, TreeNode> = {};
@@ -105,28 +117,25 @@ export default function App() {
       <div key={node.id} style={{ marginLeft: depth * 20 }}>
         <div
           style={{
-            border: "1px solid gray",
+            border: "1px solid #888",
             padding: 10,
-            marginBottom: 10
+            marginBottom: 10,
           }}
         >
           <div>
-            <strong>
-              {node.label ? `${node.label}` : "Cell"} {node.id}
-            </strong>
+            <strong>{node.label || "GPT"}</strong>
           </div>
 
-          <pre>{node.content}</pre>
+          <pre>{node.response}</pre>
+
           <div>Status: {node.status}</div>
 
-          <button onClick={() => retry(node.id)}>
-            Retry
-          </button>
+          {node.status === "done" && (
+            <button onClick={() => retry(node.id)}>Retry</button>
+          )}
         </div>
 
-        {node.children.map((child) =>
-          renderNode(child, depth + 1)
-        )}
+        {node.children.map((child) => renderNode(child, depth + 1))}
       </div>
     );
   }
@@ -134,28 +143,20 @@ export default function App() {
   const tree = buildTree();
 
   return (
-    <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
-      
-      <div
-        style={{
-          padding: 12,
-          borderBottom: "1px solid #444",
-          background: "#1e1e1e"
-        }}
-      >
-        <h2 style={{ margin: 0 }}>PACT</h2>
+    <div style={{ padding: 20, fontFamily: "monospace" }}>
+      <h2>PACT</h2>
 
-        <div style={{ marginTop: 8 }}>
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            style={{ width: "70%" }}
-          />
-          <button onClick={runPrompt}>Run</button>
-        </div>
+      <div style={{ marginBottom: 20 }}>
+        <input
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          placeholder="Enter prompt"
+          style={{ width: "70%", marginRight: 10 }}
+        />
+        <button onClick={run}>Run</button>
       </div>
 
-      <div style={{ padding: 12, overflowY: "auto", flex: 1 }}>
+      <div>
         {tree.map((root) => renderNode(root))}
       </div>
     </div>
