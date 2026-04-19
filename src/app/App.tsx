@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { marked } from "marked";
 
 type Event =
   | { type: "cellStarted"; cellId: string; parentId?: string; label?: string }
@@ -24,19 +25,18 @@ export default function App() {
   const vscode = acquireVsCodeApi();
   const [cells, setCells] = useState<Record<string, Cell>>({});
   const [prompt, setPrompt] = useState("");
+  const [rawCells, setRawCells] = useState<Record<string, boolean>>({});
+
+  function toggleRaw(cellId: string) {
+    setRawCells(prev => ({ ...prev, [cellId]: !prev[cellId] }));
+  }
 
   function run() {
-    vscode.postMessage({
-      type: "RUN_REQUESTED",
-      prompt,
-    });
+    vscode.postMessage({ type: "RUN_REQUESTED", prompt });
   }
 
   function retry(cellId: string) {
-    vscode.postMessage({
-      type: "RETRY_CELL",
-      cellId,
-    });
+    vscode.postMessage({ type: "RETRY_CELL", cellId });
   }
 
   useEffect(() => {
@@ -45,7 +45,7 @@ export default function App() {
 
       switch (data.type) {
         case "cellStarted":
-          setCells((prev) => ({
+          setCells(prev => ({
             ...prev,
             [data.cellId]: {
               id: data.cellId,
@@ -58,7 +58,7 @@ export default function App() {
           break;
 
         case "cellStream":
-          setCells((prev) => ({
+          setCells(prev => ({
             ...prev,
             [data.cellId]: {
               ...prev[data.cellId],
@@ -68,22 +68,16 @@ export default function App() {
           break;
 
         case "cellCompleted":
-          setCells((prev) => ({
+          setCells(prev => ({
             ...prev,
-            [data.cellId]: {
-              ...prev[data.cellId],
-              status: "done",
-            },
+            [data.cellId]: { ...prev[data.cellId], status: "done" },
           }));
           break;
 
         case "cellError":
-          setCells((prev) => ({
+          setCells(prev => ({
             ...prev,
-            [data.cellId]: {
-              ...prev[data.cellId],
-              status: "error",
-            },
+            [data.cellId]: { ...prev[data.cellId], status: "error" },
           }));
           break;
       }
@@ -97,11 +91,11 @@ export default function App() {
     const map: Record<string, TreeNode> = {};
     const roots: TreeNode[] = [];
 
-    Object.values(cells).forEach((cell) => {
+    Object.values(cells).forEach(cell => {
       map[cell.id] = { ...cell, children: [] };
     });
 
-    Object.values(map).forEach((node) => {
+    Object.values(map).forEach(node => {
       if (node.parentId && map[node.parentId]) {
         map[node.parentId].children.push(node);
       } else {
@@ -113,6 +107,9 @@ export default function App() {
   }
 
   function renderNode(node: TreeNode, depth = 0) {
+    const isRaw = rawCells[node.id] ?? false;
+    const html = marked(node.response || "") as string;
+
     return (
       <div key={node.id} style={{ marginLeft: depth * 20 }}>
         <div
@@ -122,20 +119,42 @@ export default function App() {
             marginBottom: 10,
           }}
         >
-          <div>
+          <div style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 6,
+          }}>
             <strong>{node.label || "GPT"}</strong>
+            <button
+              onClick={() => toggleRaw(node.id)}
+              style={{ fontSize: "0.75em", padding: "2px 8px" }}
+            >
+              {isRaw ? "Formatted" : "Raw"}
+            </button>
           </div>
 
-          <pre>{node.response}</pre>
+          {isRaw ? (
+            <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>
+              {node.response}
+            </pre>
+          ) : (
+            <div
+              dangerouslySetInnerHTML={{ __html: html }}
+              style={{ lineHeight: 1.6 }}
+            />
+          )}
 
-          <div>Status: {node.status}</div>
+          <div style={{ marginTop: 6, fontSize: "0.85em", color: "#888" }}>
+            Status: {node.status}
+          </div>
 
           {node.status === "done" && (
             <button onClick={() => retry(node.id)}>Retry</button>
           )}
         </div>
 
-        {node.children.map((child) => renderNode(child, depth + 1))}
+        {node.children.map(child => renderNode(child, depth + 1))}
       </div>
     );
   }
@@ -149,16 +168,15 @@ export default function App() {
       <div style={{ marginBottom: 20 }}>
         <input
           value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder="Enter prompt"
+          onChange={e => setPrompt(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") run(); }}
+          placeholder="Enter prompt or /prompt N"
           style={{ width: "70%", marginRight: 10 }}
         />
         <button onClick={run}>Run</button>
       </div>
 
-      <div>
-        {tree.map((root) => renderNode(root))}
-      </div>
+      <div>{tree.map(root => renderNode(root))}</div>
     </div>
   );
 }
