@@ -1,11 +1,14 @@
-import { eventBus } from "./eventBus";
+import { eventBus, CellType } from "./eventBus";
 import { LLMRouter } from "../llm/llmRouter";
+import { ResponseStore } from "../storage/responseStore";
 
 type Cell = {
   id: string;
   parentId?: string;
   prompt: string;
   label?: string;
+  cellType: CellType;
+  promptId?: string;
 };
 
 function generateId(): string {
@@ -16,12 +19,20 @@ export class ExecutionEngine {
   private cells: Record<string, Cell> = {};
   private isRunning = false;
   private router: LLMRouter;
+  private store: ResponseStore;
 
-  constructor(router: LLMRouter) {
+  constructor(router: LLMRouter, extensionPath: string) {
     this.router = router;
+    this.store = new ResponseStore(extensionPath);
   }
 
-  async runPrompt(prompt: string, parentId?: string, label?: string) {
+  async runPrompt(
+    prompt: string,
+    parentId?: string,
+    label?: string,
+    cellType: CellType = "user",
+    promptId?: string
+  ) {
     if (this.isRunning) {
       eventBus.emit({
         type: "cellError",
@@ -36,7 +47,14 @@ export class ExecutionEngine {
     const cellId = generateId();
     const cellLabel = label ?? "GPT";
 
-    this.cells[cellId] = { id: cellId, parentId, prompt, label: cellLabel };
+    this.cells[cellId] = {
+      id: cellId,
+      parentId,
+      prompt,
+      label: cellLabel,
+      cellType,
+      promptId,
+    };
 
     try {
       eventBus.emit({
@@ -44,20 +62,36 @@ export class ExecutionEngine {
         cellId,
         parentId,
         label: cellLabel,
+        cellType,
       });
 
-      await this.router.run("gpt", prompt, (token) => {
-        eventBus.emit({
-          type: "cellStream",
-          cellId,
-          chunk: token,
+      if (cellType === "tutorial" && promptId) {
+        const stored = this.store.get(promptId);
+
+        if (stored) {
+          // Replay canonical stored response token by token
+          for (const char of stored) {
+            eventBus.emit({ type: "cellStream", cellId, chunk: char });
+          }
+        } else {
+          // First run — invoke LLM and store the response
+          let full = "";
+
+          await this.router.run("gpt", prompt, (token) => {
+            full += token;
+            eventBus.emit({ type: "cellStream", cellId, chunk: token });
+          });
+
+          this.store.save(promptId, prompt, full);
+        }
+      } else {
+        // User cell — always invoke LLM
+        await this.router.run("gpt", prompt, (token) => {
+          eventBus.emit({ type: "cellStream", cellId, chunk: token });
         });
-      });
+      }
 
-      eventBus.emit({
-        type: "cellCompleted",
-        cellId,
-      });
+      eventBus.emit({ type: "cellCompleted", cellId });
 
     } catch (err: any) {
       eventBus.emit({
@@ -73,6 +107,13 @@ export class ExecutionEngine {
   async retryCell(cellId: string) {
     const original = this.cells[cellId];
     if (!original) return;
-    return this.runPrompt(original.prompt, original.parentId, original.label);
+
+    return this.runPrompt(
+      original.prompt,
+      original.parentId,
+      original.label,
+      original.cellType,
+      original.promptId
+    );
   }
 }

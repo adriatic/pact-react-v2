@@ -54,13 +54,18 @@ export function activate(context: vscode.ExtensionContext) {
 
   initRouter();
 
-  const engine = new ExecutionEngine(router);
+  const engine = new ExecutionEngine(router, context.extensionPath);
 
   eventBus.subscribe((event) => {
     panel.webview.postMessage(event);
   });
 
-  function resolvePrompt(raw: string): { text: string; label?: string } {
+  function resolvePrompt(raw: string): {
+    text: string;
+    label?: string;
+    cellType: "tutorial" | "user";
+    promptId?: string;
+  } {
     const match = raw.match(/^\/prompt\s+(\d+)/i);
 
     if (match) {
@@ -71,23 +76,30 @@ export function activate(context: vscode.ExtensionContext) {
         return {
           text: found.text,
           label: `${found.id} · ${found.title}`,
+          cellType: "tutorial",
+          promptId: found.id,
         };
       }
     }
 
-    return { text: raw };
+    return { text: raw, cellType: "user" };
   }
 
   panel.webview.onDidReceiveMessage(async (message) => {
     console.log("EXT RECEIVED:", message);
 
-    if (message.type === "RUN_REQUESTED") {
-      const { text, label } = resolvePrompt(message.prompt);
-      await engine.runPrompt(text, undefined, label);
-    }
+    try {
+      if (message.type === "RUN_REQUESTED") {
+        const { text, label, cellType, promptId } = resolvePrompt(message.prompt);
+        await engine.runPrompt(text, undefined, label, cellType, promptId);
+      }
 
-    if (message.type === "RETRY_CELL") {
-      await engine.retryCell(message.cellId);
+      if (message.type === "RETRY_CELL") {
+        await engine.retryCell(message.cellId);
+      }
+    } catch (err: any) {
+      console.error("PACT ENGINE ERROR:", err?.message, err?.stack);
     }
   });
+ 
 }

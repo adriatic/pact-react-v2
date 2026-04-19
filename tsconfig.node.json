@@ -14,6 +14,8 @@
   },
   "include": [
     "src/extension.ts",
-    "src/execution/**/*.ts"
+    "src/execution/**/*.ts",
+    "src/storage/**/*.ts",
+    "src/prompts/**/*.ts"
   ]
 }

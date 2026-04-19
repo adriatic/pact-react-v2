@@ -1,5 +1,7 @@
+export type CellType = "tutorial" | "user";
+
 export type ExecutionEvent =
-  | { type: "cellStarted"; cellId: string; parentId?: string; label?: string }
+  | { type: "cellStarted"; cellId: string; parentId?: string; label?: string; cellType: CellType }
   | { type: "cellStream"; cellId: string; chunk: string }
   | { type: "cellCompleted"; cellId: string }
   | { type: "cellError"; cellId: string; error: string };

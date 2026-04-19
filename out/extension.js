@@ -74,7 +74,7 @@ function activate(context) {
         router.setClaudeKey(claudeKey);
     }
     initRouter();
-    const engine = new ExecutionEngine_1.ExecutionEngine(router);
+    const engine = new ExecutionEngine_1.ExecutionEngine(router, context.extensionPath);
     eventBus_1.eventBus.subscribe((event) => {
         panel.webview.postMessage(event);
     });
@@ -87,19 +87,26 @@ function activate(context) {
                 return {
                     text: found.text,
                     label: `${found.id} · ${found.title}`,
+                    cellType: "tutorial",
+                    promptId: found.id,
                 };
             }
         }
-        return { text: raw };
+        return { text: raw, cellType: "user" };
     }
     panel.webview.onDidReceiveMessage(async (message) => {
         console.log("EXT RECEIVED:", message);
-        if (message.type === "RUN_REQUESTED") {
-            const { text, label } = resolvePrompt(message.prompt);
-            await engine.runPrompt(text, undefined, label);
+        try {
+            if (message.type === "RUN_REQUESTED") {
+                const { text, label, cellType, promptId } = resolvePrompt(message.prompt);
+                await engine.runPrompt(text, undefined, label, cellType, promptId);
+            }
+            if (message.type === "RETRY_CELL") {
+                await engine.retryCell(message.cellId);
+            }
         }
-        if (message.type === "RETRY_CELL") {
-            await engine.retryCell(message.cellId);
+        catch (err) {
+            console.error("PACT ENGINE ERROR:", err?.message, err?.stack);
         }
     });
 }
