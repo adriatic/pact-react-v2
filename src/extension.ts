@@ -3,6 +3,7 @@ import * as path from "path";
 import { eventBus } from "./execution/eventBus";
 import { ExecutionEngine } from "./execution/ExecutionEngine";
 import { LLMRouter } from "./llm/llmRouter";
+import { corePrompts } from "./prompts/core";
 
 export function activate(context: vscode.ExtensionContext) {
   const panel = vscode.window.createWebviewPanel(
@@ -42,7 +43,6 @@ export function activate(context: vscode.ExtensionContext) {
     </html>
   `;
 
-  // Initialize router with API keys
   const router = new LLMRouter();
 
   async function initRouter() {
@@ -54,20 +54,36 @@ export function activate(context: vscode.ExtensionContext) {
 
   initRouter();
 
-  // Instantiate engine
   const engine = new ExecutionEngine(router);
 
-  // Subscribe to event bus — forward all events to webview
   eventBus.subscribe((event) => {
     panel.webview.postMessage(event);
   });
 
-  // Handle messages from webview
+  function resolvePrompt(raw: string): { text: string; label?: string } {
+    const match = raw.match(/^\/prompt\s+(\d+)/i);
+
+    if (match) {
+      const id = match[1].padStart(2, "0");
+      const found = corePrompts.find(p => p.id === id);
+
+      if (found) {
+        return {
+          text: found.text,
+          label: `${found.id} · ${found.title}`,
+        };
+      }
+    }
+
+    return { text: raw };
+  }
+
   panel.webview.onDidReceiveMessage(async (message) => {
     console.log("EXT RECEIVED:", message);
 
     if (message.type === "RUN_REQUESTED") {
-      await engine.runPrompt(message.prompt);
+      const { text, label } = resolvePrompt(message.prompt);
+      await engine.runPrompt(text, undefined, label);
     }
 
     if (message.type === "RETRY_CELL") {

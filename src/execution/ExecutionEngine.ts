@@ -21,7 +21,7 @@ export class ExecutionEngine {
     this.router = router;
   }
 
-  async runPrompt(prompt: string, parentId?: string) {
+  async runPrompt(prompt: string, parentId?: string, label?: string) {
     if (this.isRunning) {
       eventBus.emit({
         type: "cellError",
@@ -34,15 +34,16 @@ export class ExecutionEngine {
     this.isRunning = true;
 
     const cellId = generateId();
+    const cellLabel = label ?? "GPT";
 
-    this.cells[cellId] = { id: cellId, parentId, prompt, label: "GPT" };
+    this.cells[cellId] = { id: cellId, parentId, prompt, label: cellLabel };
 
     try {
       eventBus.emit({
         type: "cellStarted",
         cellId,
         parentId,
-        label: "GPT",
+        label: cellLabel,
       });
 
       await this.router.run("gpt", prompt, (token) => {
@@ -72,6 +73,6 @@ export class ExecutionEngine {
   async retryCell(cellId: string) {
     const original = this.cells[cellId];
     if (!original) return;
-    return this.runPrompt(original.prompt, original.parentId);
+    return this.runPrompt(original.prompt, original.parentId, original.label);
   }
 }
