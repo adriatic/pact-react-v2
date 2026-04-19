@@ -1,5 +1,16 @@
 import { getDb } from "./db";
 
+export type StoredResponse = {
+  promptId: string;
+  promptText: string;
+  response: string;
+  model: string;
+  cellType: string;
+  imageData?: string;
+  imageMimeType?: string;
+  createdAt: number;
+};
+
 export class ResponseStore {
   private extensionPath: string;
 
@@ -7,22 +18,57 @@ export class ResponseStore {
     this.extensionPath = extensionPath;
   }
 
-  get(promptId: string): string | null {
+  get(promptId: string): StoredResponse | null {
     const db = getDb(this.extensionPath);
 
     const row = db
-      .prepare("SELECT response FROM responses WHERE prompt_id = ?")
-      .get(promptId) as { response: string } | undefined;
+      .prepare(`
+        SELECT prompt_id, prompt_text, response, model, cell_type,
+               image_data, image_mime_type, created_at
+        FROM responses
+        WHERE prompt_id = ?
+      `)
+      .get(promptId) as any;
 
-    return row ? row.response : null;
+    if (!row) return null;
+
+    return {
+      promptId: row.prompt_id,
+      promptText: row.prompt_text,
+      response: row.response,
+      model: row.model,
+      cellType: row.cell_type,
+      imageData: row.image_data ?? undefined,
+      imageMimeType: row.image_mime_type ?? undefined,
+      createdAt: row.created_at,
+    };
   }
 
-  save(promptId: string, promptText: string, response: string): void {
+  save(
+    promptId: string,
+    promptText: string,
+    response: string,
+    model: string,
+    cellType: string,
+    imageData?: string,
+    imageMimeType?: string,
+  ): void {
     const db = getDb(this.extensionPath);
 
     db.prepare(`
-      INSERT OR REPLACE INTO responses (prompt_id, prompt_text, response, created_at)
-      VALUES (?, ?, ?, ?)
-    `).run(promptId, promptText, response, Date.now());
+      INSERT OR REPLACE INTO responses
+        (prompt_id, prompt_text, response, model, cell_type,
+         image_data, image_mime_type, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      promptId,
+      promptText,
+      response,
+      model,
+      cellType,
+      imageData ?? null,
+      imageMimeType ?? null,
+      Date.now(),
+    );
   }
 }
