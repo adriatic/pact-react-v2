@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { marked } from "marked";
 
 type Event =
@@ -19,20 +19,122 @@ type TreeNode = Cell & {
   children: TreeNode[];
 };
 
+type ImageAttachment = {
+  base64: string;
+  mimeType: string;
+  previewUrl: string;
+};
+
 declare const acquireVsCodeApi: any;
+
+const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/webp"];
 
 export default function App() {
   const vscode = acquireVsCodeApi();
   const [cells, setCells] = useState<Record<string, Cell>>({});
   const [prompt, setPrompt] = useState("");
   const [rawCells, setRawCells] = useState<Record<string, boolean>>({});
+  const [image, setImage] = useState<ImageAttachment | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   function toggleRaw(cellId: string) {
     setRawCells(prev => ({ ...prev, [cellId]: !prev[cellId] }));
   }
 
+  function encodeFile(file: File): Promise<ImageAttachment> {
+    return new Promise((resolve, reject) => {
+      if (!ACCEPTED_TYPES.includes(file.type)) {
+        reject(new Error(`Unsupported image type: ${file.type}`));
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const base64 = dataUrl.split(",")[1];
+        resolve({
+          base64,
+          mimeType: file.type,
+          previewUrl: dataUrl,
+        });
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function clearImage() {
+    setImage(null);
+  }
+
+  async function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setImage(await encodeFile(file));
+    } catch (err: any) {
+      console.error("Image load error:", err.message);
+    }
+    e.target.value = "";
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragging(true);
+  }
+
+  function handleDragLeave() {
+    setIsDragging(false);
+  }
+
+  async function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    try {
+      setImage(await encodeFile(file));
+    } catch (err: any) {
+      console.error("Drop error:", err.message);
+    }
+  }
+
+  useEffect(() => {
+    async function handlePaste(e: ClipboardEvent) {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (const item of Array.from(items)) {
+        if (ACCEPTED_TYPES.includes(item.type)) {
+          const file = item.getAsFile();
+          if (!file) continue;
+          try {
+            setImage(await encodeFile(file));
+          } catch (err: any) {
+            console.error("Paste error:", err.message);
+          }
+          break;
+        }
+      }
+    }
+
+    window.addEventListener("paste", handlePaste);
+    return () => window.removeEventListener("paste", handlePaste);
+  }, []);
+
   function run() {
-    vscode.postMessage({ type: "RUN_REQUESTED", prompt });
+    if (!prompt.trim() && !image) return;
+
+    vscode.postMessage({
+      type: "RUN_REQUESTED",
+      prompt,
+      ...(image && {
+        image: { base64: image.base64, mimeType: image.mimeType },
+      }),
+    });
+
+    setPrompt("");
+    setImage(null);
   }
 
   function retry(cellId: string) {
@@ -112,13 +214,7 @@ export default function App() {
 
     return (
       <div key={node.id} style={{ marginLeft: depth * 20 }}>
-        <div
-          style={{
-            border: "1px solid #888",
-            padding: 10,
-            marginBottom: 10,
-          }}
-        >
+        <div style={{ border: "1px solid #888", padding: 10, marginBottom: 10 }}>
           <div style={{
             display: "flex",
             justifyContent: "space-between",
@@ -165,15 +261,78 @@ export default function App() {
     <div style={{ padding: 20, fontFamily: "monospace" }}>
       <h2>PACT</h2>
 
-      <div style={{ marginBottom: 20 }}>
-        <input
-          value={prompt}
-          onChange={e => setPrompt(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter") run(); }}
-          placeholder="Enter prompt or /prompt N"
-          style={{ width: "70%", marginRight: 10 }}
-        />
-        <button onClick={run}>Run</button>
+      {/* Input area with drag and drop */}
+      <div
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        style={{
+          marginBottom: 20,
+          border: isDragging ? "2px dashed #888" : "2px solid transparent",
+          borderRadius: 4,
+          padding: 4,
+        }}
+      >
+        {/* Image preview */}
+        {image && (
+          <div style={{ marginBottom: 8, position: "relative", display: "inline-block" }}>
+            <img
+              src={image.previewUrl}
+              alt="attachment"
+              style={{ maxHeight: 120, maxWidth: "100%", borderRadius: 4, border: "1px solid #888" }}
+            />
+            <button
+              onClick={clearImage}
+              style={{
+                position: "absolute",
+                top: 2,
+                right: 2,
+                background: "#333",
+                color: "#fff",
+                border: "none",
+                borderRadius: "50%",
+                width: 20,
+                height: 20,
+                cursor: "pointer",
+                fontSize: "0.75em",
+                lineHeight: "20px",
+                textAlign: "center",
+                padding: 0,
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* Prompt row */}
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input
+            value={prompt}
+            onChange={e => setPrompt(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") run(); }}
+            placeholder="Enter prompt or /prompt N — paste or drop image"
+            style={{ flex: 1 }}
+          />
+
+          {/* File picker */}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            title="Attach image"
+            style={{ padding: "2px 8px" }}
+          >
+            📎
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            style={{ display: "none" }}
+            onChange={handleFileInput}
+          />
+
+          <button onClick={run}>Run</button>
+        </div>
       </div>
 
       <div>{tree.map(root => renderNode(root))}</div>

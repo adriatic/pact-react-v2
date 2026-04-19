@@ -2,6 +2,11 @@ import { eventBus, CellType } from "./eventBus";
 import { LLMRouter } from "../llm/llmRouter";
 import { ResponseStore } from "../storage/responseStore";
 
+export type ImageAttachment = {
+  base64: string;
+  mimeType: string;
+};
+
 type Cell = {
   id: string;
   parentId?: string;
@@ -9,6 +14,7 @@ type Cell = {
   label?: string;
   cellType: CellType;
   promptId?: string;
+  image?: ImageAttachment;
 };
 
 function generateId(): string {
@@ -31,7 +37,8 @@ export class ExecutionEngine {
     parentId?: string,
     label?: string,
     cellType: CellType = "user",
-    promptId?: string
+    promptId?: string,
+    image?: ImageAttachment,
   ) {
     if (this.isRunning) {
       eventBus.emit({
@@ -54,6 +61,7 @@ export class ExecutionEngine {
       label: cellLabel,
       cellType,
       promptId,
+      image,
     };
 
     try {
@@ -70,7 +78,7 @@ export class ExecutionEngine {
 
         if (stored) {
           // Replay canonical stored response token by token
-          for (const char of stored) {
+          for (const char of stored.response) {
             eventBus.emit({ type: "cellStream", cellId, chunk: char });
           }
         } else {
@@ -80,15 +88,21 @@ export class ExecutionEngine {
           await this.router.run("gpt", prompt, (token) => {
             full += token;
             eventBus.emit({ type: "cellStream", cellId, chunk: token });
-          });
+          }, image);
 
-          this.store.save(promptId, prompt, full);
+          this.store.save(promptId, prompt, full, "gpt", cellType);
         }
       } else {
         // User cell — always invoke LLM
+        let full = "";
+
         await this.router.run("gpt", prompt, (token) => {
+          full += token;
           eventBus.emit({ type: "cellStream", cellId, chunk: token });
-        });
+        }, image);
+
+        this.store.save(cellId, prompt, full, "gpt", cellType,
+          image?.base64, image?.mimeType);
       }
 
       eventBus.emit({ type: "cellCompleted", cellId });
@@ -113,7 +127,8 @@ export class ExecutionEngine {
       original.parentId,
       original.label,
       original.cellType,
-      original.promptId
+      original.promptId,
+      original.image,
     );
   }
 }

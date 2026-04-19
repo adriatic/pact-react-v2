@@ -1,5 +1,10 @@
 export type LLMModel = "gpt" | "claude";
 
+export type ImageAttachment = {
+  base64: string;
+  mimeType: string;
+};
+
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 
@@ -18,20 +23,21 @@ export class LLMRouter {
   async run(
     model: LLMModel,
     prompt: string,
-    onToken?: (t: string) => void
+    onToken?: (t: string) => void,
+    image?: ImageAttachment,
   ): Promise<string> {
     if (model === "gpt") {
       if (!this.openai) {
         return this.error("OpenAI API key not set", onToken);
       }
-      return this.runGPT(prompt, onToken);
+      return this.runGPT(prompt, onToken, image);
     }
 
     if (model === "claude") {
       if (!this.claude) {
         return this.error("Claude API key not set", onToken);
       }
-      return this.runClaude(prompt, onToken);
+      return this.runClaude(prompt, onToken, image);
     }
 
     return this.error("Unknown model", onToken);
@@ -39,13 +45,27 @@ export class LLMRouter {
 
   private async runGPT(
     prompt: string,
-    onToken?: (t: string) => void
+    onToken?: (t: string) => void,
+    image?: ImageAttachment,
   ): Promise<string> {
     let full = "";
 
+    const content: OpenAI.Chat.ChatCompletionContentPart[] = [];
+
+    if (image) {
+      content.push({
+        type: "image_url",
+        image_url: {
+          url: `data:${image.mimeType};base64,${image.base64}`,
+        },
+      });
+    }
+
+    content.push({ type: "text", text: prompt });
+
     const stream = await this.openai!.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
+      model: "gpt-4.1",
+      messages: [{ role: "user", content }],
       stream: true,
     });
 
@@ -62,21 +82,38 @@ export class LLMRouter {
 
   private async runClaude(
     prompt: string,
-    onToken?: (t: string) => void
+    onToken?: (t: string) => void,
+    image?: ImageAttachment,
   ): Promise<string> {
     let full = "";
+
+    const content: Anthropic.MessageParam["content"] = [];
+
+    if (image) {
+      content.push({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: image.mimeType as
+            | "image/png"
+            | "image/jpeg"
+            | "image/webp",
+          data: image.base64,
+        },
+      });
+    }
+
+    content.push({ type: "text", text: prompt });
 
     const stream = await this.claude!.messages.stream({
       model: "claude-sonnet-4-6",
       max_tokens: 2000,
-      messages: [{ role: "user", content: prompt }],
+      messages: [{ role: "user", content }],
     });
 
     for await (const event of stream) {
       if (event.type === "content_block_delta") {
         const delta: any = event.delta;
-
-        // ✅ SAFE extraction
         if (delta.type === "text_delta") {
           const token = delta.text || "";
           full += token;

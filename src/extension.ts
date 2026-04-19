@@ -91,7 +91,10 @@ export function activate(context: vscode.ExtensionContext) {
     try {
       if (message.type === "RUN_REQUESTED") {
         const { text, label, cellType, promptId } = resolvePrompt(message.prompt);
-        await engine.runPrompt(text, undefined, label, cellType, promptId);
+        const image = message.image
+          ? { base64: message.image.base64, mimeType: message.image.mimeType }
+          : undefined;
+        await engine.runPrompt(text, undefined, label, cellType, promptId, image);
       }
 
       if (message.type === "RETRY_CELL") {
@@ -101,5 +104,5 @@ export function activate(context: vscode.ExtensionContext) {
       console.error("PACT ENGINE ERROR:", err?.message, err?.stack);
     }
   });
- 
+
 }
