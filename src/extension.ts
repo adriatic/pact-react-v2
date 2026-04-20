@@ -90,11 +90,27 @@ export function activate(context: vscode.ExtensionContext) {
 
     try {
       if (message.type === "RUN_REQUESTED") {
-        const { text, label, cellType, promptId } = resolvePrompt(message.prompt);
-        const image = message.image
-          ? { base64: message.image.base64, mimeType: message.image.mimeType }
-          : undefined;
-        await engine.runPrompt(text, undefined, label, cellType, promptId, image);
+        const blocks = message.blocks;
+        const model = message.model ?? "gpt";
+
+        const firstText = blocks?.find((b: any) => b.type === "text")?.text?.trim() ?? "";
+        const { text, label, cellType, promptId } = resolvePrompt(firstText);
+
+        const image = blocks?.find((b: any) => b.type === "image");
+
+        if (cellType === "tutorial") {
+          await engine.runPrompt(text, undefined, label, cellType, promptId);
+        } else {
+          await engine.runPrompt(
+            text,
+            undefined,
+            label,
+            cellType,
+            promptId,
+            image ? { base64: image.base64, mimeType: image.mimeType } : undefined,
+            model,
+          );
+        }
       }
 
       if (message.type === "RETRY_CELL") {

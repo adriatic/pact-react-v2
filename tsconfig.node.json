@@ -16,6 +16,7 @@
     "src/extension.ts",
     "src/execution/**/*.ts",
     "src/storage/**/*.ts",
-    "src/prompts/**/*.ts"
+    "src/prompts/**/*.ts",
+    "src/types/**/*.ts"
   ]
 }

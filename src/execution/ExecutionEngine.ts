@@ -1,5 +1,5 @@
 import { eventBus, CellType } from "./eventBus";
-import { LLMRouter } from "../llm/llmRouter";
+import { LLMRouter, LLMModel } from "../llm/llmRouter";
 import { ResponseStore } from "../storage/responseStore";
 
 export type ImageAttachment = {
@@ -15,6 +15,7 @@ type Cell = {
   cellType: CellType;
   promptId?: string;
   image?: ImageAttachment;
+  model: LLMModel;
 };
 
 function generateId(): string {
@@ -39,6 +40,7 @@ export class ExecutionEngine {
     cellType: CellType = "user",
     promptId?: string,
     image?: ImageAttachment,
+    model: LLMModel = "gpt",
   ) {
     if (this.isRunning) {
       eventBus.emit({
@@ -52,7 +54,7 @@ export class ExecutionEngine {
     this.isRunning = true;
 
     const cellId = generateId();
-    const cellLabel = label ?? "GPT";
+    const cellLabel = label ?? (model === "claude" ? "Claude" : "GPT");
 
     this.cells[cellId] = {
       id: cellId,
@@ -62,6 +64,7 @@ export class ExecutionEngine {
       cellType,
       promptId,
       image,
+      model,
     };
 
     try {
@@ -77,32 +80,31 @@ export class ExecutionEngine {
         const stored = this.store.get(promptId);
 
         if (stored) {
-          // Replay canonical stored response token by token
           for (const char of stored.response) {
             eventBus.emit({ type: "cellStream", cellId, chunk: char });
           }
         } else {
-          // First run — invoke LLM and store the response
           let full = "";
 
-          await this.router.run("gpt", prompt, (token) => {
+          await this.router.run(model, prompt, (token) => {
             full += token;
             eventBus.emit({ type: "cellStream", cellId, chunk: token });
           }, image);
 
-          this.store.save(promptId, prompt, full, "gpt", cellType);
+          this.store.save(promptId, prompt, full, model, cellType);
         }
       } else {
-        // User cell — always invoke LLM
         let full = "";
 
-        await this.router.run("gpt", prompt, (token) => {
+        await this.router.run(model, prompt, (token) => {
           full += token;
           eventBus.emit({ type: "cellStream", cellId, chunk: token });
         }, image);
 
-        this.store.save(cellId, prompt, full, "gpt", cellType,
-          image?.base64, image?.mimeType);
+        this.store.save(
+          cellId, prompt, full, model, cellType,
+          image?.base64, image?.mimeType,
+        );
       }
 
       eventBus.emit({ type: "cellCompleted", cellId });
@@ -129,6 +131,7 @@ export class ExecutionEngine {
       original.cellType,
       original.promptId,
       original.image,
+      original.model,
     );
   }
 }
