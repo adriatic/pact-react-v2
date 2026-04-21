@@ -39,6 +39,38 @@ const migrations: Migration[] = [
       ALTER TABLE responses ADD COLUMN cell_type TEXT NOT NULL DEFAULT 'user';
     `,
   },
+  {
+    version: 4,
+    description: "Add notebooks, discussions, parent-child relationships",
+    sql: `
+      CREATE TABLE IF NOT EXISTS notebooks (
+        id         TEXT PRIMARY KEY,
+        name       TEXT NOT NULL,
+        is_system  INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS discussions (
+        id            TEXT PRIMARY KEY,
+        notebook_id   TEXT NOT NULL,
+        parent_id     TEXT,
+        name          TEXT NOT NULL,
+        created_at    INTEGER NOT NULL,
+        total_time_ms INTEGER NOT NULL DEFAULT 0
+      );
+
+      ALTER TABLE responses ADD COLUMN discussion_id TEXT;
+
+      INSERT INTO notebooks (id, name, is_system, created_at)
+      VALUES
+        ('notebook-tutorial', 'Tutorial', 1, ${Date.now()}),
+        ('notebook-general',  'General',  0, ${Date.now()});
+
+      INSERT INTO discussions (id, notebook_id, parent_id, name, created_at)
+      VALUES
+        ('discussion-default', 'notebook-general', NULL, 'Getting Started', ${Date.now()});
+    `,
+  },
 ];
 
 function getSchemaVersion(database: Database.Database): number {
@@ -62,16 +94,13 @@ function getSchemaVersion(database: Database.Database): number {
 
 function runMigrations(database: Database.Database): void {
   const current = getSchemaVersion(database);
-
   const pending = migrations.filter(m => m.version > current);
 
   if (pending.length === 0) return;
 
   for (const migration of pending) {
     console.log(`PACT DB: applying migration v${migration.version} — ${migration.description}`);
-
     database.exec(migration.sql);
-
     database
       .prepare("UPDATE schema_version SET version = ?")
       .run(migration.version);
@@ -88,7 +117,6 @@ export function getDb(extensionPath: string): Database.Database {
   }
 
   db = new Database(path.join(dir, "pact.db"));
-
   runMigrations(db);
 
   return db;

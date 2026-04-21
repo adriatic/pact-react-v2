@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { marked } from "marked";
 import type { SerializedContentBlock } from "../types/contentBlock";
+import { RateLimitError } from "@anthropic-ai/sdk";
 
 type LLMModel = "gpt" | "claude";
 
@@ -129,9 +130,16 @@ export default function App() {
     const el = composerRef.current;
     if (!el) return;
 
-    const blocks = serializeComposer(el);
-    if (blocks.length === 0) return;
+    let blocks = serializeComposer(el);
 
+    if (blocks.length === 0) {
+      const text = el.innerText?.trim();
+      if (text) {
+        blocks = [{ type: "text", text }];
+      }
+    }
+    if (blocks.length === 0) return;
+    
     vscode.postMessage({
       type: "RUN_REQUESTED",
       blocks,
