@@ -97,6 +97,33 @@ const migrations: Migration[] = [
     ALTER TABLE responses ADD COLUMN parent_id TEXT;
   `,
   },
+  {
+  version: 7,
+  description: "Seed all tutorial discussions from corePrompts",
+  sql: `
+    UPDATE discussions
+    SET id = 'discussion-tutorial-00', name = 'Getting Started'
+    WHERE id = 'discussion-default';
+
+    INSERT OR IGNORE INTO discussions (id, notebook_id, parent_id, name, created_at, total_time_ms)
+    VALUES
+      ('discussion-tutorial-01', 'notebook-tutorial', NULL, 'What am I looking at?', ${Date.now()}, 0),
+      ('discussion-tutorial-02', 'notebook-tutorial', NULL, 'What just happened?', ${Date.now()}, 0),
+      ('discussion-tutorial-03', 'notebook-tutorial', NULL, 'Why a cell, not a bubble?', ${Date.now()}, 0),
+      ('discussion-tutorial-04', 'notebook-tutorial', NULL, 'What does Retry actually mean?', ${Date.now()}, 0),
+      ('discussion-tutorial-05', 'notebook-tutorial', NULL, 'What is the cell hierarchy for?', ${Date.now()}, 0),
+      ('discussion-tutorial-06', 'notebook-tutorial', NULL, 'What is a PACT cell as a data structure?', ${Date.now()}, 0),
+      ('discussion-tutorial-07', 'notebook-tutorial', NULL, 'What is the notebook?', ${Date.now()}, 0),
+      ('discussion-tutorial-08', 'notebook-tutorial', NULL, 'What should never reach the LLM?', ${Date.now()}, 0),
+      ('discussion-tutorial-09', 'notebook-tutorial', NULL, 'What is a PACT signal?', ${Date.now()}, 0),
+      ('discussion-tutorial-10', 'notebook-tutorial', NULL, 'How does PACT compare two models?', ${Date.now()}, 0),
+      ('discussion-tutorial-11', 'notebook-tutorial', NULL, 'What would PACT remember that chat forgets?', ${Date.now()}, 0),
+      ('discussion-tutorial-12', 'notebook-tutorial', NULL, 'What is a prompt library?', ${Date.now()}, 0),
+      ('discussion-tutorial-13', 'notebook-tutorial', NULL, 'How does PACT apply to a domain?', ${Date.now()}, 0),
+      ('discussion-tutorial-14', 'notebook-tutorial', NULL, 'Why is this not an agentic system?', ${Date.now()}, 0),
+      ('discussion-tutorial-15', 'notebook-tutorial', NULL, 'What does PACT become?', ${Date.now()}, 0);
+  `,
+},
 ];
 
 function getSchemaVersion(database: Database.Database): number {

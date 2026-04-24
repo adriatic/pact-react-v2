@@ -121,6 +121,7 @@ export default function App() {
   const [modelOpen, setModelOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
+  const [pendingTeaser, setPendingTeaser] = useState<string | null>(null);
 
   // Explorer
   const explorer = useExplorer(vscode);
@@ -144,14 +145,13 @@ export default function App() {
     if (composerRef.current) composerRef.current.innerHTML = "";
   }
 
-  // ── Populate composer from Explorer prompt selection ──────────────────────
+  // ── Populate composer ─────────────────────────────────────────────────────
 
   function populateComposer(text: string) {
     const el = composerRef.current;
     if (!el) return;
     el.innerText = text;
     el.focus();
-    // Move cursor to end
     const range = document.createRange();
     range.selectNodeContents(el);
     range.collapse(false);
@@ -182,8 +182,11 @@ export default function App() {
       discussionId: explorer.activeDiscussionId,
     });
 
-    el.innerHTML = "";
-    el.focus();
+    const isTutorial = explorer.activeDiscussionId?.startsWith("discussion-tutorial-");
+    if (!isTutorial) {
+      el.innerHTML = "";
+      el.focus();
+    }
   }
 
   function retry(cellId: string) {
@@ -319,9 +322,11 @@ export default function App() {
           break;
 
         case "discussionCellsLoaded":
-          setCells(
-            Object.fromEntries(data.cells.map((c: Cell) => [c.id, c]))
-          );
+          setCells(Object.fromEntries(data.cells.map((c: Cell) => [c.id, c])));
+          if (pendingTeaser) {
+            populateComposer(pendingTeaser);
+            setPendingTeaser(null);
+          }
           break;
 
         case "discussionDeleted":
@@ -341,7 +346,7 @@ export default function App() {
 
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, []);
+  }, [pendingTeaser]);
 
   // ── Divider drag ──────────────────────────────────────────────────────────
 
@@ -472,7 +477,7 @@ export default function App() {
             onSelectDiscussion={explorer.selectDiscussion}
             onCreateNotebook={explorer.createNotebook}
             onCreateDiscussion={explorer.createDiscussion}
-            onSelectPrompt={populateComposer}
+            onSelectPrompt={(text) => setPendingTeaser(text)}
             corePrompts={corePrompts}
             onDeleteDiscussion={explorer.deleteDiscussion}
             onDeleteNotebook={explorer.deleteNotebook}

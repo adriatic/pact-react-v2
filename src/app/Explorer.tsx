@@ -21,7 +21,7 @@ type Props = {
     onSelectDiscussion: (discussion: Discussion) => void;
     onCreateNotebook: (name: string) => void;
     onCreateDiscussion: (notebookId: string, name: string) => void;
-    corePrompts: { id: string; text: string }[];
+    corePrompts: { id: string; title: string; teaser: string; text: string }[];
     onSelectPrompt: (text: string) => void;
     onDeleteDiscussion: (discussionId: string) => void;
     onDeleteNotebook: (notebookId: string) => void;
@@ -184,9 +184,11 @@ export default function Explorer({
                                                 onMouseLeave={() => setHoveredId(null)}
                                                 onClick={() => {
                                                     onSelectDiscussion(discussion);
-                                                    if (discussion.id === "discussion-default") {
-                                                        const gettingStarted = corePrompts.find(p => p.id === "00");
-                                                        if (gettingStarted) onSelectPrompt(gettingStarted.text);
+                                                    const match = discussion.id.match(/^discussion-tutorial-(\d+)$/);
+                                                    if (match) {
+                                                        const id = match[1];
+                                                        const prompt = corePrompts.find(p => p.id === id);
+                                                        if (prompt) onSelectPrompt(prompt.teaser);
                                                     }
                                                 }}
                                                 style={{
@@ -208,7 +210,7 @@ export default function Explorer({
                                                         {time}
                                                     </span>
                                                 )}
-                                                {hoveredId === discussion.id && (
+                                                {hoveredId === discussion.id && !notebook.isSystem && (
                                                     <span
                                                         onClick={e => {
                                                             e.stopPropagation();
