@@ -1,6 +1,7 @@
 import { eventBus, CellType } from "./eventBus";
 import { LLMRouter, LLMModel } from "../llm/llmRouter";
 import { ResponseStore } from "../storage/responseStore";
+import { NotebookStore } from "../storage/notebookStore";
 
 export type ImageAttachment = {
   base64: string;
@@ -16,6 +17,7 @@ type Cell = {
   promptId?: string;
   image?: ImageAttachment;
   model: LLMModel;
+  discussionId: string;
 };
 
 function generateId(): string {
@@ -27,10 +29,25 @@ export class ExecutionEngine {
   private isRunning = false;
   private router: LLMRouter;
   private store: ResponseStore;
+  private notebookStore: NotebookStore;
 
   constructor(router: LLMRouter, extensionPath: string) {
     this.router = router;
     this.store = new ResponseStore(extensionPath);
+    this.notebookStore = new NotebookStore(extensionPath);
+  }
+
+  private async getSystemPrompt(discussionId: string): Promise<string | null> {
+    const db = this.notebookStore;
+    // Find which notebook owns this discussion
+    const notebooks = db.getAllNotebooks();
+    for (const notebook of notebooks) {
+      const discussions = db.getDiscussionsForNotebook(notebook.id);
+      if (discussions.some(d => d.id === discussionId)) {
+        return db.getSystemPrompt(notebook.id);
+      }
+    }
+    return null;
   }
 
   async runPrompt(
@@ -41,6 +58,7 @@ export class ExecutionEngine {
     promptId?: string,
     image?: ImageAttachment,
     model: LLMModel = "gpt",
+    discussionId: string = "discussion-default",
   ) {
     if (this.isRunning) {
       eventBus.emit({
@@ -55,6 +73,7 @@ export class ExecutionEngine {
 
     const cellId = generateId();
     const cellLabel = label ?? (model === "claude" ? "Claude" : "GPT");
+    const startTime = Date.now();
 
     this.cells[cellId] = {
       id: cellId,
@@ -65,6 +84,7 @@ export class ExecutionEngine {
       promptId,
       image,
       model,
+      discussionId,
     };
 
     try {
@@ -74,40 +94,57 @@ export class ExecutionEngine {
         parentId,
         label: cellLabel,
         cellType,
+        promptText: prompt,
       });
+
+      const systemPrompt = await this.getSystemPrompt(discussionId);
 
       if (cellType === "tutorial" && promptId) {
         const stored = this.store.get(promptId);
 
-        if (stored) {
+        if (stored && !parentId) {
+          // First load — replay from DB
           for (const char of stored.response) {
             eventBus.emit({ type: "cellStream", cellId, chunk: char });
           }
         } else {
+          // First run or retry — always save as new record
           let full = "";
-
           await this.router.run(model, prompt, (token) => {
             full += token;
             eventBus.emit({ type: "cellStream", cellId, chunk: token });
-          }, image);
+          }, image, systemPrompt ?? undefined);
 
-          this.store.save(promptId, prompt, full, model, cellType);
+          this.store.save(
+            cellId, prompt, full, model, cellType,
+            image?.base64, image?.mimeType,
+            parentId, discussionId,
+          );
         }
       } else {
         let full = "";
-
         await this.router.run(model, prompt, (token) => {
           full += token;
           eventBus.emit({ type: "cellStream", cellId, chunk: token });
-        }, image);
+        }, image, systemPrompt ?? undefined);
 
         this.store.save(
           cellId, prompt, full, model, cellType,
           image?.base64, image?.mimeType,
+          parentId, discussionId,
         );
       }
 
-      eventBus.emit({ type: "cellCompleted", cellId });
+      // Record elapsed time
+      const elapsedMs = Date.now() - startTime;
+
+      this.notebookStore.addTime(discussionId, elapsedMs);
+
+      eventBus.emit({
+        type: "cellCompleted",
+        cellId,
+        elapsedMs,
+      });
 
     } catch (err: any) {
       eventBus.emit({
@@ -120,18 +157,23 @@ export class ExecutionEngine {
     }
   }
 
-  async retryCell(cellId: string) {
+  async retryCell(cellId: string, model?: LLMModel) {
     const original = this.cells[cellId];
+    console.log("retryCell:", cellId, "requested model:", model, "cell type:", original.cellType, "model:", original?.model);
     if (!original) return;
+
+    const effectiveModel = model ?? original.model;
+    const label = effectiveModel === "claude" ? "Claude" : "GPT";
 
     return this.runPrompt(
       original.prompt,
-      original.parentId,
-      original.label,
+      cellId,
+      label,
       original.cellType,
       original.promptId,
       original.image,
-      original.model,
+      effectiveModel,
+      original.discussionId,
     );
   }
 }

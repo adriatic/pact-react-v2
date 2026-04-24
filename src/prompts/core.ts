@@ -5,7 +5,11 @@ export type CorePrompt = {
 };
 
 export const corePrompts: CorePrompt[] = [
-  {
+   {
+    id: "00",
+    title: "Getting Started",
+    text: `Introduce PACT — a new kind of AI interface that treats interaction with language models as structured notebook execution rather than conversation. Explain why this matters and what it enables that a standard chat interface cannot.`,
+  },{
     id: "01",
     title: "What am I looking at?",
     text: `I have PACT open inside VSCode. I can see a panel with a text input and a Run button. 

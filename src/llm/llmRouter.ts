@@ -20,24 +20,26 @@ export class LLMRouter {
     this.claude = key ? new Anthropic({ apiKey: key }) : null;
   }
 
+
   async run(
     model: LLMModel,
     prompt: string,
     onToken?: (t: string) => void,
     image?: ImageAttachment,
+    systemPrompt?: string,
   ): Promise<string> {
     if (model === "gpt") {
       if (!this.openai) {
         return this.error("OpenAI API key not set", onToken);
       }
-      return this.runGPT(prompt, onToken, image);
+      return this.runGPT(prompt, onToken, image, systemPrompt);
     }
 
     if (model === "claude") {
       if (!this.claude) {
         return this.error("Claude API key not set", onToken);
       }
-      return this.runClaude(prompt, onToken, image);
+      return this.runClaude(prompt, onToken, image, systemPrompt);
     }
 
     return this.error("Unknown model", onToken);
@@ -47,11 +49,11 @@ export class LLMRouter {
     prompt: string,
     onToken?: (t: string) => void,
     image?: ImageAttachment,
+    systemPrompt?: string,
   ): Promise<string> {
     let full = "";
 
     const content: OpenAI.Chat.ChatCompletionContentPart[] = [];
-
     if (image) {
       content.push({
         type: "image_url",
@@ -63,9 +65,15 @@ export class LLMRouter {
 
     content.push({ type: "text", text: prompt });
 
+    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
+    if (systemPrompt) {
+      messages.push({ role: "system", content: systemPrompt });
+    }
+    messages.push({ role: "user", content });
+
     const stream = await this.openai!.chat.completions.create({
       model: "gpt-4.1",
-      messages: [{ role: "user", content }],
+      messages,
       stream: true,
     });
 
@@ -84,6 +92,7 @@ export class LLMRouter {
     prompt: string,
     onToken?: (t: string) => void,
     image?: ImageAttachment,
+    systemPrompt?: string,
   ): Promise<string> {
     let full = "";
 
@@ -108,6 +117,7 @@ export class LLMRouter {
     const stream = await this.claude!.messages.stream({
       model: "claude-sonnet-4-6",
       max_tokens: 2000,
+      system: systemPrompt,
       messages: [{ role: "user", content }],
     });
 

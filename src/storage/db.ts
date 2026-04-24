@@ -71,6 +71,32 @@ const migrations: Migration[] = [
         ('discussion-default', 'notebook-general', NULL, 'Getting Started', ${Date.now()});
     `,
   },
+  {
+    version: 5,
+    description: "Add system_prompt to notebooks, move Getting Started to Tutorial",
+    sql: `
+      ALTER TABLE notebooks ADD COLUMN system_prompt TEXT;
+
+      UPDATE notebooks
+      SET system_prompt = 'You are assisting a user of PACT — a Prompt and Context Tracking system built as a VSCode extension. PACT treats AI interactions not as conversations but as structured notebook executions. Each prompt becomes an immutable cell with a recorded response, forming a reasoning ledger. PACT supports multiple LLMs (GPT and Claude) running in parallel, with responses stored in SQLite and exportable to Obsidian. The user is exploring PACT architecture and capabilities through a structured tutorial.'
+      WHERE id = 'notebook-tutorial';
+
+      UPDATE discussions
+      SET notebook_id = 'notebook-tutorial'
+      WHERE id = 'discussion-default';
+
+      UPDATE discussions
+      SET name = 'Getting Started'
+      WHERE id = 'discussion-default';
+    `,
+  },
+  {
+    version: 6,
+    description: "Add parent_id to responses",
+    sql: `
+    ALTER TABLE responses ADD COLUMN parent_id TEXT;
+  `,
+  },
 ];
 
 function getSchemaVersion(database: Database.Database): number {
