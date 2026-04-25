@@ -93,6 +93,7 @@ export class NotebookStore {
       status: "done",
       elapsedMs: 0,
       label: r.cell_type === "tutorial" ? r.prompt_id : undefined,
+      promptText: r.prompt_text,
     }));
   }
 

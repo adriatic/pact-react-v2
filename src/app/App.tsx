@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { marked } from "marked";
 import type { SerializedContentBlock } from "../types/contentBlock";
 import Explorer from "./Explorer";
@@ -121,7 +121,6 @@ export default function App() {
   const [modelOpen, setModelOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
-  const [pendingTeaser, setPendingTeaser] = useState<string | null>(null);
 
   // Explorer
   const explorer = useExplorer(vscode);
@@ -323,12 +322,14 @@ export default function App() {
 
         case "discussionCellsLoaded":
           setCells(Object.fromEntries(data.cells.map((c: Cell) => [c.id, c])));
-          if (pendingTeaser) {
-            populateComposer(pendingTeaser);
-            setPendingTeaser(null);
+          if (data.cells.length > 0) {
+            const firstRoot = data.cells.find((c: Cell) => !c.parentId);
+            if (firstRoot?.promptText && composerRef.current) {
+              populateComposer(firstRoot.promptText);
+            }
           }
           break;
-
+ 
         case "discussionDeleted":
           setCells({});
           if (composerRef.current) composerRef.current.innerHTML = "";
@@ -346,7 +347,7 @@ export default function App() {
 
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [pendingTeaser]);
+  }, []);
 
   // ── Divider drag ──────────────────────────────────────────────────────────
 
@@ -474,10 +475,17 @@ export default function App() {
             notebooks={explorer.notebooks}
             discussions={explorer.discussions}
             activeDiscussionId={explorer.activeDiscussionId}
-            onSelectDiscussion={explorer.selectDiscussion}
+            onSelectDiscussion={(discussion) => {
+              setCells({});
+              if (composerRef.current) composerRef.current.innerHTML = "";
+              explorer.selectDiscussion(discussion);
+            }}
             onCreateNotebook={explorer.createNotebook}
             onCreateDiscussion={explorer.createDiscussion}
-            onSelectPrompt={(text) => setPendingTeaser(text)}
+            onSelectPrompt={(text) => {
+              setCells({});
+              populateComposer(text);
+            }}
             corePrompts={corePrompts}
             onDeleteDiscussion={explorer.deleteDiscussion}
             onDeleteNotebook={explorer.deleteNotebook}

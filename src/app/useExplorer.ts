@@ -14,7 +14,7 @@ export function useExplorer(vscode: any) {
     const [notebooks, setNotebooks] = useState<Notebook[]>([]);
     const [discussions, setDiscussions] = useState<Discussion[]>([]);
     const [activeDiscussionId, setActiveDiscussionId] = useState<string | null>(
-        "discussion-default"
+        "discussion-tutorial-00"
     );
 
     // Request initial data on mount
@@ -44,7 +44,8 @@ export function useExplorer(vscode: any) {
 
                 case "discussionDeleted":
                     setDiscussions(prev => prev.filter(d => d.id !== data.discussionId));
-                    setActiveDiscussionId(prev => prev === data.discussionId ? null : prev
+                    setActiveDiscussionId(prev =>
+                        prev === data.discussionId ? null : prev
                     );
                     break;
 
@@ -61,7 +62,9 @@ export function useExplorer(vscode: any) {
 
     function selectDiscussion(discussion: Discussion) {
         setActiveDiscussionId(discussion.id);
-        vscode.postMessage({ type: "LOAD_DISCUSSION_CELLS", discussionId: discussion.id });
+        if (!discussion.id.startsWith("discussion-tutorial-")) {
+            vscode.postMessage({ type: "LOAD_DISCUSSION_CELLS", discussionId: discussion.id });
+        }
     }
 
     function createNotebook(name: string) {
@@ -72,7 +75,6 @@ export function useExplorer(vscode: any) {
         vscode.postMessage({ type: "CREATE_DISCUSSION", notebookId, name });
     }
 
-    // Add to returned functions:
     function deleteDiscussion(discussionId: string) {
         vscode.postMessage({ type: "DELETE_DISCUSSION", discussionId });
     }
@@ -89,6 +91,6 @@ export function useExplorer(vscode: any) {
         createNotebook,
         createDiscussion,
         deleteDiscussion,
-        deleteNotebook
+        deleteNotebook,
     };
 }
