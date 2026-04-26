@@ -33,6 +33,76 @@ declare const acquireVsCodeApi: any;
 
 const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/webp"];
 
+
+// ─── Jaccard sentence-level diff ─────────────────────────────────────────────
+
+function tokenize(text: string): Set<string> {
+  return new Set(text.toLowerCase().match(/\b\w+\b/g) || []);
+}
+
+function jaccard(a: Set<string>, b: Set<string>): number {
+  const intersection = new Set([...a].filter(x => b.has(x)));
+  const union = new Set([...a, ...b]);
+  return union.size === 0 ? 1 : intersection.size / union.size;
+}
+
+function splitSentences(text: string): string[] {
+  return text
+    .split(/(?<=[.!?])\s+/)
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
+}
+
+function computeWordDiff(textA: string, textB: string): {
+  htmlA: string;
+  htmlB: string;
+} {
+  const THRESHOLD = 0.4;
+  const sentencesA = splitSentences(textA);
+  const sentencesB = splitSentences(textB);
+  const tokensA = sentencesA.map(tokenize);
+  const tokensB = sentencesB.map(tokenize);
+
+  // For each sentence in A, find best match in B
+  const matchedB = new Set<number>();
+  const aResults: { text: string; matched: boolean }[] = sentencesA.map((s, i) => {
+    let bestSim = 0;
+    let bestJ = -1;
+    for (let j = 0; j < sentencesB.length; j++) {
+      const sim = jaccard(tokensA[i], tokensB[j]);
+      if (sim > bestSim) { bestSim = sim; bestJ = j; }
+    }
+    if (bestSim >= THRESHOLD) {
+      matchedB.add(bestJ);
+      return { text: s, matched: true };
+    }
+    return { text: s, matched: false };
+  });
+
+  // Sentences in B not matched to any in A are genuinely new
+  const bResults: { text: string; matched: boolean }[] = sentencesB.map((s, j) => ({
+    text: s,
+    matched: matchedB.has(j),
+  }));
+
+  const escape = (t: string) =>
+    t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  const htmlA = aResults
+    .map(r => r.matched
+      ? escape(r.text)
+      : `<span class="diff-del">${escape(r.text)}</span>`)
+    .join(" ");
+
+  const htmlB = bResults
+    .map(r => r.matched
+      ? escape(r.text)
+      : `<span class="diff-ins">${escape(r.text)}</span>`)
+    .join(" ");
+
+  return { htmlA, htmlB };
+}
+
 // ─── Serialize contenteditable DOM → ContentBlock[] ──────────────────────────
 
 function serializeComposer(el: HTMLDivElement): SerializedContentBlock[] {
@@ -122,6 +192,12 @@ export default function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
 
+  // Diff state
+  const [diffMode, setDiffMode] = useState(false);
+  const [diffCellA, setDiffCellA] = useState<string | null>(null);
+  const [diffCellB, setDiffCellB] = useState<string | null>(null);
+  const [showDiff, setShowDiff] = useState(false);
+
   // Explorer
   const explorer = useExplorer(vscode);
 
@@ -142,6 +218,13 @@ export default function App() {
   function clearView() {
     setCells({});
     if (composerRef.current) composerRef.current.innerHTML = "";
+  }
+
+  function closeDiff() {
+    setShowDiff(false);
+    setDiffMode(false);
+    setDiffCellA(null);
+    setDiffCellB(null);
   }
 
   // ── Populate composer ─────────────────────────────────────────────────────
@@ -194,6 +277,17 @@ export default function App() {
       populateComposer(cell.promptText);
     }
     vscode.postMessage({ type: "RETRY_CELL", cellId, model });
+  }
+
+  function startDiff(cellId: string) {
+    setDiffCellA(cellId);
+    setDiffMode(true);
+  }
+
+  function selectDiffB(cellId: string) {
+    setDiffCellB(cellId);
+    setDiffMode(false);
+    setShowDiff(true);
   }
 
   // ── Keyboard: Cmd+Enter to send ───────────────────────────────────────────
@@ -329,7 +423,7 @@ export default function App() {
             }
           }
           break;
- 
+
         case "discussionDeleted":
           setCells({});
           if (composerRef.current) composerRef.current.innerHTML = "";
@@ -348,6 +442,11 @@ export default function App() {
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
   }, []);
+
+  useEffect(() => {
+    setCells({});
+    if (composerRef.current) composerRef.current.innerHTML = "";
+  }, [explorer.activeDiscussionId]);
 
   // ── Divider drag ──────────────────────────────────────────────────────────
 
@@ -403,10 +502,17 @@ export default function App() {
   function renderNode(node: TreeNode, depth = 0) {
     const isRaw = rawCells[node.id] ?? false;
     const html = marked(node.response || "") as string;
+    const isDiffA = diffCellA === node.id;
+    const isSelectable = diffMode && node.id !== diffCellA && node.status === "done";
 
     return (
       <div key={node.id} style={{ marginLeft: depth * 20 }}>
-        <div style={{ border: "1px solid #888", padding: 10, marginBottom: 10 }}>
+        <div style={{
+          border: isDiffA ? "1px solid #0e639c" : "1px solid #888",
+          padding: 10,
+          marginBottom: 10,
+          background: isDiffA ? "#0e639c11" : "transparent",
+        }}>
           <div style={{
             display: "flex",
             justifyContent: "space-between",
@@ -414,12 +520,14 @@ export default function App() {
             marginBottom: 6,
           }}>
             <strong>{node.label || "GPT"}</strong>
-            <button
-              onClick={() => toggleRaw(node.id)}
-              style={{ fontSize: "0.75em", padding: "2px 8px" }}
-            >
-              {isRaw ? "Formatted" : "Raw"}
-            </button>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button
+                onClick={() => toggleRaw(node.id)}
+                style={{ fontSize: "0.75em", padding: "2px 8px" }}
+              >
+                {isRaw ? "Formatted" : "Raw"}
+              </button>
+            </div>
           </div>
 
           {isRaw ? (
@@ -446,12 +554,124 @@ export default function App() {
             )}
           </div>
 
-          {node.status === "done" && (
-            <button onClick={() => retry(node.id)}>Retry</button>
+          {node.status === "done" && !diffMode && (
+            <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+              <button onClick={() => retry(node.id)}>Retry</button>
+              <button onClick={() => startDiff(node.id)}>Diff</button>
+            </div>
+          )}
+
+          {isDiffA && (
+            <div style={{ marginTop: 6, fontSize: "0.8em", color: "#0e639c" }}>
+              Select another cell to compare →
+            </div>
+          )}
+
+          {isSelectable && (
+            <button
+              onClick={() => selectDiffB(node.id)}
+              style={{
+                marginTop: 6,
+                background: "#0e639c",
+                border: "none",
+                borderRadius: 3,
+                color: "#fff",
+                cursor: "pointer",
+                padding: "3px 10px",
+                fontSize: "0.8em",
+              }}
+            >
+              Compare
+            </button>
           )}
         </div>
 
         {node.children.map(child => renderNode(child, depth + 1))}
+      </div>
+    );
+  }
+
+  // ── Diff view ─────────────────────────────────────────────────────────────
+
+  function renderDiff() {
+    const cellA = diffCellA ? cells[diffCellA] : null;
+    const cellB = diffCellB ? cells[diffCellB] : null;
+    if (!cellA || !cellB) return null;
+
+    const { htmlA, htmlB } = computeWordDiff(cellA.response, cellB.response);
+
+    return (
+      <div style={{
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      }}>
+        {/* Diff header */}
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "8px 16px",
+          borderBottom: "1px solid #444",
+          flexShrink: 0,
+          background: "#1a1a1a",
+        }}>
+          <span style={{ color: "#e05252", fontSize: "0.9em", fontWeight: "bold" }}>
+            ← {cellA.label || "GPT"}
+          </span>
+          <button
+            onClick={closeDiff}
+            style={{
+              background: "none",
+              border: "1px solid #555",
+              borderRadius: 4,
+              color: "#888",
+              cursor: "pointer",
+              padding: "2px 12px",
+              fontSize: "0.85em",
+            }}
+          >
+            Close Diff
+          </button>
+          <span style={{ color: "#4ec94e", fontSize: "0.9em", fontWeight: "bold" }}>
+            {cellB.label || "GPT"} →
+          </span>
+        </div>
+
+        {/* Diff columns */}
+        <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+          {/* Column A */}
+          <div
+            style={{
+              flex: 1,
+              overflowY: "auto",
+              padding: 16,
+              borderRight: "1px solid #444",
+              fontFamily: "monospace",
+              fontSize: "0.9em",
+              lineHeight: 1.8,
+              whiteSpace: "pre-wrap",
+              color: "#d4d4d4",
+            }}
+            dangerouslySetInnerHTML={{ __html: htmlA }}
+          />
+
+          {/* Column B */}
+          <div
+            style={{
+              flex: 1,
+              overflowY: "auto",
+              padding: 16,
+              fontFamily: "monospace",
+              fontSize: "0.9em",
+              lineHeight: 1.8,
+              whiteSpace: "pre-wrap",
+              color: "#d4d4d4",
+            }}
+            dangerouslySetInnerHTML={{ __html: htmlB }}
+          />
+        </div>
       </div>
     );
   }
@@ -467,6 +687,25 @@ export default function App() {
       fontFamily: "monospace",
       overflow: "hidden",
     }}>
+
+      {/* Global styles — always rendered */}
+      <style>{`
+        [data-placeholder]:empty:before {
+          content: attr(data-placeholder);
+          color: #555;
+          pointer-events: none;
+        }
+        span.diff-del {
+          background: #5c1a1a;
+          color: #ff9999;
+          border-radius: 2px;
+        }
+        span.diff-ins {
+          background: #1a3a1a;
+          color: #99ff99;
+          border-radius: 2px;
+        }
+      `}</style>
 
       {/* Explorer panel */}
       {!collapsed && (
@@ -542,6 +781,22 @@ export default function App() {
           >
             Clear
           </button>
+          {diffMode && (
+            <button
+              onClick={() => { setDiffMode(false); setDiffCellA(null); }}
+              style={{
+                background: "none",
+                border: "1px solid #e05252",
+                borderRadius: 4,
+                color: "#e05252",
+                cursor: "pointer",
+                padding: "2px 10px",
+                fontSize: "0.85em",
+              }}
+            >
+              Cancel Diff
+            </button>
+          )}
           <div
             title={isRunning ? "Running" : "Idle"}
             style={{
@@ -549,9 +804,7 @@ export default function App() {
               height: 10,
               borderRadius: "50%",
               background: isRunning ? "#e05252" : "#4ec94e",
-              boxShadow: isRunning
-                ? "0 0 6px #e05252"
-                : "0 0 6px #4ec94e",
+              boxShadow: isRunning ? "0 0 6px #e05252" : "0 0 6px #4ec94e",
               transition: "background 0.3s, box-shadow 0.3s",
             }}
           />
@@ -564,156 +817,151 @@ export default function App() {
           )}
         </div>
 
-        {/* Fixed composer */}
-        <div style={{
-          flexShrink: 0,
-          padding: "10px 16px",
-          borderBottom: "1px solid #444",
-        }}>
-          <div
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            style={{
-              border: isDragging ? "2px dashed #888" : "1px solid #666",
-              borderRadius: 6,
-              background: "#1e1e1e",
-            }}
-          >
-            <div
-              ref={composerRef}
-              contentEditable
-              suppressContentEditableWarning
-              onKeyDown={handleKeyDown}
-              style={{
-                minHeight: 60,
-                maxHeight: 200,
-                overflowY: "auto",
-                padding: "10px 12px",
-                outline: "none",
-                whiteSpace: "pre-wrap",
-                lineHeight: 1.6,
-                color: "#d4d4d4",
-              }}
-              data-placeholder="Enter prompt — Cmd+V to paste image, Cmd+Enter to send"
-            />
-
+        {showDiff ? renderDiff() : (
+          <>
+            {/* Fixed composer */}
             <div style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "6px 10px",
-              borderTop: "1px solid #444",
+              flexShrink: 0,
+              padding: "10px 16px",
+              borderBottom: "1px solid #444",
             }}>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  title="Attach image"
+              <div
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                style={{
+                  border: isDragging ? "2px dashed #888" : "1px solid #666",
+                  borderRadius: 6,
+                  background: "#1e1e1e",
+                }}
+              >
+                <div
+                  ref={composerRef}
+                  contentEditable
+                  suppressContentEditableWarning
+                  onKeyDown={handleKeyDown}
                   style={{
-                    background: "none",
-                    border: "none",
-                    color: "#888",
-                    cursor: "pointer",
-                    fontSize: "1.1em",
+                    minHeight: 60,
+                    maxHeight: 200,
+                    overflowY: "auto",
+                    padding: "10px 12px",
+                    outline: "none",
+                    whiteSpace: "pre-wrap",
+                    lineHeight: 1.6,
+                    color: "#d4d4d4",
                   }}
-                >
-                  +
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  style={{ display: "none" }}
-                  onChange={handleFileInput}
+                  data-placeholder="Enter prompt — Cmd+V to paste image, Cmd+Enter to send"
                 />
-              </div>
 
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={{ position: "relative" }}>
-                  <button
-                    onClick={() => setModelOpen(p => !p)}
-                    style={{
-                      background: "none",
-                      border: "1px solid #555",
-                      borderRadius: 4,
-                      color: "#ccc",
-                      cursor: "pointer",
-                      padding: "2px 10px",
-                      fontSize: "0.85em",
-                    }}
-                  >
-                    {model === "gpt" ? "GPT-4.1" : "Claude"} ▾
-                  </button>
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "6px 10px",
+                  borderTop: "1px solid #444",
+                }}>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      title="Attach image"
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "#888",
+                        cursor: "pointer",
+                        fontSize: "1.1em",
+                      }}
+                    >
+                      +
+                    </button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      style={{ display: "none" }}
+                      onChange={handleFileInput}
+                    />
+                  </div>
 
-                  {modelOpen && (
-                    <div style={{
-                      position: "absolute",
-                      bottom: "110%",
-                      right: 0,
-                      background: "#2d2d2d",
-                      border: "1px solid #555",
-                      borderRadius: 4,
-                      minWidth: 130,
-                      zIndex: 10,
-                    }}>
-                      {(["gpt", "claude"] as LLMModel[]).map(m => (
-                        <div
-                          key={m}
-                          onClick={() => { setModel(m); setModelOpen(false); }}
-                          style={{
-                            padding: "6px 12px",
-                            cursor: "pointer",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                            color: "#ccc",
-                          }}
-                        >
-                          <span style={{ opacity: model === m ? 1 : 0 }}>✓</span>
-                          {m === "gpt" ? "GPT-4.1" : "Claude Sonnet"}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ position: "relative" }}>
+                      <button
+                        onClick={() => setModelOpen(p => !p)}
+                        style={{
+                          background: "none",
+                          border: "1px solid #555",
+                          borderRadius: 4,
+                          color: "#ccc",
+                          cursor: "pointer",
+                          padding: "2px 10px",
+                          fontSize: "0.85em",
+                        }}
+                      >
+                        {model === "gpt" ? "GPT-4.1" : "Claude"} ▾
+                      </button>
+
+                      {modelOpen && (
+                        <div style={{
+                          position: "absolute",
+                          bottom: "110%",
+                          right: 0,
+                          background: "#2d2d2d",
+                          border: "1px solid #555",
+                          borderRadius: 4,
+                          minWidth: 130,
+                          zIndex: 10,
+                        }}>
+                          {(["gpt", "claude"] as LLMModel[]).map(m => (
+                            <div
+                              key={m}
+                              onClick={() => { setModel(m); setModelOpen(false); }}
+                              style={{
+                                padding: "6px 12px",
+                                cursor: "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 8,
+                                color: "#ccc",
+                              }}
+                            >
+                              <span style={{ opacity: model === m ? 1 : 0 }}>✓</span>
+                              {m === "gpt" ? "GPT-4.1" : "Claude Sonnet"}
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      )}
                     </div>
-                  )}
-                </div>
 
-                <button
-                  onClick={send}
-                  title="Send (Cmd+Enter)"
-                  style={{
-                    background: "#0e639c",
-                    border: "none",
-                    borderRadius: "50%",
-                    width: 32,
-                    height: 32,
-                    cursor: "pointer",
-                    color: "#fff",
-                    fontSize: "1em",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  ↑
-                </button>
+                    <button
+                      onClick={send}
+                      title="Send (Cmd+Enter)"
+                      style={{
+                        background: "#0e639c",
+                        border: "none",
+                        borderRadius: "50%",
+                        width: 32,
+                        height: 32,
+                        cursor: "pointer",
+                        color: "#fff",
+                        fontSize: "1em",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      ↑
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* Placeholder styling */}
-        <style>{`
-          [data-placeholder]:empty:before {
-            content: attr(data-placeholder);
-            color: #555;
-            pointer-events: none;
-          }
-        `}</style>
-
-        {/* Scrollable cell tree */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
-          {tree.map(root => renderNode(root))}
-        </div>
+            {/* Scrollable cell tree */}
+            <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
+              {tree.map(root => renderNode(root))}
+            </div>
+          </>
+        )}
 
       </div>
     </div>
