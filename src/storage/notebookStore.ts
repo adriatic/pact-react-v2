@@ -16,6 +16,31 @@ export type Discussion = {
   totalTimeMs: number;
 };
 
+export type PactExport = {
+  version: number;
+  exportedAt: number;
+  notebook: {
+    name: string;
+    systemPrompt: string | null;
+  };
+  discussions: {
+    id: string;
+    name: string;
+    createdAt: number;
+    totalTimeMs: number;
+  }[];
+  cells: {
+    id: string;
+    discussionId: string;
+    parentId: string | null;
+    promptText: string;
+    response: string;
+    model: string;
+    cellType: string;
+    createdAt: number;
+  }[];
+};
+
 export class NotebookStore {
   private extensionPath: string;
 
@@ -122,7 +147,6 @@ export class NotebookStore {
 
   deleteNotebook(notebookId: string): void {
     const db = getDb(this.extensionPath);
-    // Delete all cells from all discussions in this notebook
     db.prepare(`
     DELETE FROM responses WHERE discussion_id IN (
       SELECT id FROM discussions WHERE notebook_id = ?
@@ -154,5 +178,120 @@ export class NotebookStore {
       .get(notebookId) as { system_prompt: string | null } | undefined;
 
     return row?.system_prompt ?? null;
+  }
+
+  // ── Export ────────────────────────────────────────────────────────────────
+
+  exportNotebook(notebookId: string): PactExport | null {
+    const db = getDb(this.extensionPath);
+
+    const notebookRow = db
+      .prepare("SELECT * FROM notebooks WHERE id = ?")
+      .get(notebookId) as any;
+
+    if (!notebookRow) return null;
+
+    const discussionRows = db
+      .prepare("SELECT * FROM discussions WHERE notebook_id = ? ORDER BY created_at ASC")
+      .all(notebookId) as any[];
+
+    const discussionIds = discussionRows.map((d: any) => d.id);
+
+    const cellRows = discussionIds.length > 0
+      ? db.prepare(`
+          SELECT * FROM responses
+          WHERE discussion_id IN (${discussionIds.map(() => "?").join(",")})
+          ORDER BY created_at ASC
+        `).all(...discussionIds) as any[]
+      : [];
+
+    return {
+      version: 1,
+      exportedAt: Date.now(),
+      notebook: {
+        name: notebookRow.name,
+        systemPrompt: notebookRow.system_prompt ?? null,
+      },
+      discussions: discussionRows.map((d: any) => ({
+        id: d.id,
+        name: d.name,
+        createdAt: d.created_at,
+        totalTimeMs: d.total_time_ms,
+      })),
+      cells: cellRows.map((c: any) => ({
+        id: c.prompt_id,
+        discussionId: c.discussion_id,
+        parentId: c.parent_id ?? null,
+        promptText: c.prompt_text,
+        response: c.response,
+        model: c.model,
+        cellType: c.cell_type,
+        createdAt: c.created_at,
+      })),
+    };
+  }
+
+  // ── Import ────────────────────────────────────────────────────────────────
+
+  importNotebook(data: PactExport): Notebook {
+    const db = getDb(this.extensionPath);
+
+    // Create notebook with new ID
+    const notebookId = `notebook-${Date.now()}`;
+    const createdAt = Date.now();
+
+    db.prepare(`
+      INSERT INTO notebooks (id, name, is_system, created_at, system_prompt)
+      VALUES (?, ?, 0, ?, ?)
+    `).run(notebookId, data.notebook.name, createdAt, data.notebook.systemPrompt ?? null);
+
+    // Map old discussion IDs to new ones
+    const discussionIdMap: Record<string, string> = {};
+    for (const d of data.discussions) {
+      const newId = `discussion-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      discussionIdMap[d.id] = newId;
+
+      db.prepare(`
+        INSERT INTO discussions (id, notebook_id, parent_id, name, created_at, total_time_ms)
+        VALUES (?, ?, NULL, ?, ?, ?)
+      `).run(newId, notebookId, d.name, d.createdAt, d.totalTimeMs);
+    }
+
+    // Map old cell IDs to new ones, re-generate to avoid collisions
+    const cellIdMap: Record<string, string> = {};
+    for (const c of data.cells) {
+      const newCellId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      cellIdMap[c.id] = newCellId;
+    }
+
+    // Insert cells with remapped IDs
+    for (const c of data.cells) {
+      const newCellId = cellIdMap[c.id];
+      const newDiscussionId = discussionIdMap[c.discussionId] ?? null;
+      const newParentId = c.parentId ? (cellIdMap[c.parentId] ?? null) : null;
+
+      db.prepare(`
+        INSERT INTO responses
+          (prompt_id, prompt_text, response, model, cell_type,
+           created_at, discussion_id, parent_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        newCellId,
+        c.promptText,
+        c.response,
+        c.model,
+        c.cellType,
+        c.createdAt,
+        newDiscussionId,
+        newParentId,
+      );
+    }
+
+    return {
+      id: notebookId,
+      name: data.notebook.name,
+      isSystem: false,
+      createdAt,
+    };
   }
 }

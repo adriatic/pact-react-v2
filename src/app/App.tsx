@@ -728,6 +728,8 @@ export default function App() {
             corePrompts={corePrompts}
             onDeleteDiscussion={explorer.deleteDiscussion}
             onDeleteNotebook={explorer.deleteNotebook}
+            onExportNotebook={explorer.exportNotebook}
+            onImportNotebook={explorer.importNotebook}
           />
         </div>
       )}

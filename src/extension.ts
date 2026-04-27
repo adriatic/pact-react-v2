@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "path";
+import * as fs from "fs";
 import { eventBus } from "./execution/eventBus";
 import { ExecutionEngine } from "./execution/ExecutionEngine";
 import { LLMRouter } from "./llm/llmRouter";
@@ -47,11 +48,15 @@ export function activate(context: vscode.ExtensionContext) {
   const router = new LLMRouter();
   const notebookStore = new NotebookStore(context.extensionPath);
 
-  async function initRouter() {
-    const gptKey = await context.secrets.get("OPENAI_API_KEY");
-    const claudeKey = await context.secrets.get("ANTHROPIC_API_KEY");
-    router.setApiKey(gptKey);
-    router.setClaudeKey(claudeKey);
+  function initRouter() {
+    try {
+      const configPath = path.join(context.extensionPath, "config.json");
+      const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+      router.setApiKey(config.openaiApiKey);
+      router.setClaudeKey(config.anthropicApiKey);
+    } catch (err: any) {
+      console.error("PACT: failed to load config.json:", err.message);
+    }
   }
 
   initRouter();
@@ -117,7 +122,6 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       if (message.type === "RETRY_CELL") {
-        console.log("EXT RETRY_CELL:", message.cellId, "model:", message.model);
         await engine.retryCell(message.cellId, message.model);
       }
 
@@ -162,6 +166,68 @@ export function activate(context: vscode.ExtensionContext) {
       if (message.type === "DELETE_NOTEBOOK") {
         notebookStore.deleteNotebook(message.notebookId);
         panel.webview.postMessage({ type: "notebookDeleted", notebookId: message.notebookId });
+      }
+
+      // ── Export ────────────────────────────────────────────────────────────
+
+      if (message.type === "EXPORT_NOTEBOOK") {
+        console.log("EXT EXPORT_NOTEBOOK received:", message.notebookId);
+        const data = notebookStore.exportNotebook(message.notebookId);
+        if (!data) {
+          vscode.window.showErrorMessage("PACT: notebook not found for export.");
+          return;
+        }
+
+        const saveUri = await vscode.window.showSaveDialog({
+          defaultUri: vscode.Uri.file(
+            path.join(
+              require("os").homedir(),
+              `${data.notebook.name.replace(/\s+/g, "_")}.pact`
+            )
+          ),
+          filters: { "PACT Notebook": ["pact"] },
+        });
+
+        if (!saveUri) return;
+
+        fs.writeFileSync(saveUri.fsPath, JSON.stringify(data, null, 2), "utf-8");
+        vscode.window.showInformationMessage(
+          `PACT: "${data.notebook.name}" exported successfully.`
+        );
+      }
+
+      // ── Import ────────────────────────────────────────────────────────────
+
+      if (message.type === "IMPORT_NOTEBOOK") {
+        const openUris = await vscode.window.showOpenDialog({
+          canSelectMany: false,
+          filters: { "PACT Notebook": ["pact"] },
+          openLabel: "Import",
+        });
+
+        if (!openUris || openUris.length === 0) return;
+
+        const raw = fs.readFileSync(openUris[0].fsPath, "utf-8");
+        const data = JSON.parse(raw);
+
+        if (!data.version || !data.notebook || !data.discussions || !data.cells) {
+          vscode.window.showErrorMessage("PACT: invalid .pact file.");
+          return;
+        }
+
+        const notebook = notebookStore.importNotebook(data);
+        const discussions = notebookStore.getDiscussionsForNotebook(notebook.id);
+
+        panel.webview.postMessage({ type: "notebookCreated", notebook });
+        panel.webview.postMessage({
+          type: "discussionsImported",
+          notebookId: notebook.id,
+          discussions,
+        });
+
+        vscode.window.showInformationMessage(
+          `PACT: "${notebook.name}" imported successfully.`
+        );
       }
 
     } catch (err: any) {

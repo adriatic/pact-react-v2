@@ -25,6 +25,8 @@ type Props = {
     onSelectPrompt: (text: string) => void;
     onDeleteDiscussion: (discussionId: string) => void;
     onDeleteNotebook: (notebookId: string) => void;
+    onExportNotebook: (notebookId: string) => void;
+    onImportNotebook: () => void;
 };
 
 export default function Explorer({
@@ -38,6 +40,8 @@ export default function Explorer({
     onSelectPrompt,
     onDeleteDiscussion,
     onDeleteNotebook,
+    onExportNotebook,
+    onImportNotebook,
 }: Props) {
     const [expandedNotebooks, setExpandedNotebooks] = useState<Record<string, boolean>>(
         { "notebook-tutorial": true, "notebook-general": true }
@@ -101,20 +105,36 @@ export default function Explorer({
                 justifyContent: "space-between",
             }}>
                 <span>Explorer</span>
-                <span
-                    onClick={() => setShowNewNotebook(true)}
-                    title="New Notebook"
-                    style={{
-                        cursor: "pointer",
-                        fontSize: "1.3em",
-                        lineHeight: 1,
-                        color: "#555",
-                    }}
-                    onMouseEnter={e => (e.currentTarget.style.color = "#ccc")}
-                    onMouseLeave={e => (e.currentTarget.style.color = "#555")}
-                >
-                    +
-                </span>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <span
+                        onClick={onImportNotebook}
+                        title="Import Notebook"
+                        style={{
+                            cursor: "pointer",
+                            fontSize: "1.1em",
+                            lineHeight: 1,
+                            color: "#555",
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.color = "#ccc")}
+                        onMouseLeave={e => (e.currentTarget.style.color = "#555")}
+                    >
+                        ⊕
+                    </span>
+                    <span
+                        onClick={() => setShowNewNotebook(true)}
+                        title="New Notebook"
+                        style={{
+                            cursor: "pointer",
+                            fontSize: "1.3em",
+                            lineHeight: 1,
+                            color: "#555",
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.color = "#ccc")}
+                        onMouseLeave={e => (e.currentTarget.style.color = "#555")}
+                    >
+                        +
+                    </span>
+                </div>
             </div>
 
             {/* Notebook tree */}
@@ -149,24 +169,43 @@ export default function Explorer({
                                 <span>{notebook.isSystem ? "🔒" : "📓"}</span>
                                 <span style={{ flex: 1 }}>{notebook.name}</span>
                                 {hoveredId === notebook.id && !notebook.isSystem && (
-                                    <span
-                                        onClick={e => {
-                                            e.stopPropagation();
-                                            onDeleteNotebook(notebook.id);
-
-                                        }}
-                                        style={{
-                                            color: "#777",
-                                            fontSize: "0.8em",
-                                            padding: "0 2px",
-                                            cursor: "pointer",
-                                            lineHeight: 1,
-                                        }}
-                                        onMouseEnter={e => (e.currentTarget.style.color = "#e05252")}
-                                        onMouseLeave={e => (e.currentTarget.style.color = "#555")}
-                                    >
-                                        ✕
-                                    </span>
+                                    <div style={{ display: "flex", gap: 4 }}>
+                                        <span
+                                            onClick={e => {
+                                                e.stopPropagation();
+                                                onExportNotebook(notebook.id);
+                                            }}
+                                            title="Export notebook"
+                                            style={{
+                                                color: "#555",
+                                                fontSize: "0.85em",
+                                                padding: "0 2px",
+                                                cursor: "pointer",
+                                                lineHeight: 1,
+                                            }}
+                                            onMouseEnter={e => (e.currentTarget.style.color = "#4ec94e")}
+                                            onMouseLeave={e => (e.currentTarget.style.color = "#555")}
+                                        >
+                                            ↑
+                                        </span>
+                                        <span
+                                            onClick={e => {
+                                                e.stopPropagation();
+                                                onDeleteNotebook(notebook.id);
+                                            }}
+                                            style={{
+                                                color: "#777",
+                                                fontSize: "0.8em",
+                                                padding: "0 2px",
+                                                cursor: "pointer",
+                                                lineHeight: 1,
+                                            }}
+                                            onMouseEnter={e => (e.currentTarget.style.color = "#e05252")}
+                                            onMouseLeave={e => (e.currentTarget.style.color = "#555")}
+                                        >
+                                            ✕
+                                        </span>
+                                    </div>
                                 )}
                             </div>
 
@@ -215,7 +254,6 @@ export default function Explorer({
                                                         onClick={e => {
                                                             e.stopPropagation();
                                                             onDeleteDiscussion(discussion.id);
-
                                                         }}
                                                         style={{
                                                             color: "#777",

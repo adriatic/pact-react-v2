@@ -6,7 +6,8 @@ type ExplorerMessage =
     | { type: "notebookCreated"; notebook: Notebook }
     | { type: "discussionCreated"; discussion: Discussion }
     | { type: "discussionDeleted"; discussionId: string }
-    | { type: "notebookDeleted"; notebookId: string };
+    | { type: "notebookDeleted"; notebookId: string }
+    | { type: "discussionsImported"; notebookId: string; discussions: Discussion[] };
 
 declare const acquireVsCodeApi: any;
 
@@ -53,6 +54,10 @@ export function useExplorer(vscode: any) {
                     setNotebooks(prev => prev.filter(n => n.id !== data.notebookId));
                     setDiscussions(prev => prev.filter(d => d.notebookId !== data.notebookId));
                     break;
+
+                case "discussionsImported":
+                    setDiscussions(prev => [...prev, ...data.discussions]);
+                    break;
             }
         }
 
@@ -83,6 +88,15 @@ export function useExplorer(vscode: any) {
         vscode.postMessage({ type: "DELETE_NOTEBOOK", notebookId });
     }
 
+    function exportNotebook(notebookId: string) {
+        console.log("exportNotebook called:", notebookId);
+        vscode.postMessage({ type: "EXPORT_NOTEBOOK", notebookId });
+    }
+
+    function importNotebook() {
+        vscode.postMessage({ type: "IMPORT_NOTEBOOK" });
+    }
+
     return {
         notebooks,
         discussions,
@@ -92,5 +106,7 @@ export function useExplorer(vscode: any) {
         createDiscussion,
         deleteDiscussion,
         deleteNotebook,
+        exportNotebook,
+        importNotebook,
     };
 }
