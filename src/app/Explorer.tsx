@@ -105,13 +105,14 @@ export default function Explorer({
                 justifyContent: "space-between",
             }}>
                 <span>Explorer</span>
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    {/* Import notebook */}
                     <span
                         onClick={onImportNotebook}
                         title="Import Notebook"
                         style={{
                             cursor: "pointer",
-                            fontSize: "1.1em",
+                            fontSize: "1.4em",
                             lineHeight: 1,
                             color: "#555",
                         }}
@@ -120,12 +121,13 @@ export default function Explorer({
                     >
                         ⊕
                     </span>
+                    {/* New notebook */}
                     <span
                         onClick={() => setShowNewNotebook(true)}
                         title="New Notebook"
                         style={{
                             cursor: "pointer",
-                            fontSize: "1.3em",
+                            fontSize: "1.6em",
                             lineHeight: 1,
                             color: "#555",
                         }}
@@ -169,7 +171,8 @@ export default function Explorer({
                                 <span>{notebook.isSystem ? "🔒" : "📓"}</span>
                                 <span style={{ flex: 1 }}>{notebook.name}</span>
                                 {hoveredId === notebook.id && !notebook.isSystem && (
-                                    <div style={{ display: "flex", gap: 4 }}>
+                                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                        {/* Export button */}
                                         <span
                                             onClick={e => {
                                                 e.stopPropagation();
@@ -178,7 +181,7 @@ export default function Explorer({
                                             title="Export notebook"
                                             style={{
                                                 color: "#555",
-                                                fontSize: "0.85em",
+                                                fontSize: "1.1em",
                                                 padding: "0 2px",
                                                 cursor: "pointer",
                                                 lineHeight: 1,
@@ -188,6 +191,7 @@ export default function Explorer({
                                         >
                                             ↑
                                         </span>
+                                        {/* Delete button */}
                                         <span
                                             onClick={e => {
                                                 e.stopPropagation();
@@ -195,13 +199,13 @@ export default function Explorer({
                                             }}
                                             style={{
                                                 color: "#777",
-                                                fontSize: "0.8em",
+                                                fontSize: "1.1em",
                                                 padding: "0 2px",
                                                 cursor: "pointer",
                                                 lineHeight: 1,
                                             }}
                                             onMouseEnter={e => (e.currentTarget.style.color = "#e05252")}
-                                            onMouseLeave={e => (e.currentTarget.style.color = "#555")}
+                                            onMouseLeave={e => (e.currentTarget.style.color = "#777")}
                                         >
                                             ✕
                                         </span>
@@ -257,13 +261,13 @@ export default function Explorer({
                                                         }}
                                                         style={{
                                                             color: "#777",
-                                                            fontSize: "0.8em",
+                                                            fontSize: "1.1em",
                                                             padding: "0 2px",
                                                             cursor: "pointer",
                                                             lineHeight: 1,
                                                         }}
                                                         onMouseEnter={e => (e.currentTarget.style.color = "#e05252")}
-                                                        onMouseLeave={e => (e.currentTarget.style.color = "#555")}
+                                                        onMouseLeave={e => (e.currentTarget.style.color = "#777")}
                                                     >
                                                         ✕
                                                     </span>

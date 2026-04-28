@@ -265,10 +265,7 @@ export default function App() {
     });
 
     const isTutorial = explorer.activeDiscussionId?.startsWith("discussion-tutorial-");
-    if (!isTutorial) {
-      el.innerHTML = "";
-      el.focus();
-    }
+    el.focus();
   }
 
   function retry(cellId: string) {

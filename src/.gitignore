@@ -1,9 +1,0 @@
-out/
-dist/
-node_modules/
-pact-data/
-config.json
-*.zip
-*.vsix
-.DS_Store
-*.tsbuildinfo
