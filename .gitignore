@@ -3,6 +3,7 @@ dist/
 node_modules/
 pact-data/
 config.json
+project/
 *.zip
 *.vsix
 .DS_Store

@@ -171,7 +171,6 @@ export function activate(context: vscode.ExtensionContext) {
       // ── Export ────────────────────────────────────────────────────────────
 
       if (message.type === "EXPORT_NOTEBOOK") {
-        console.log("EXT EXPORT_NOTEBOOK received:", message.notebookId);
         const data = notebookStore.exportNotebook(message.notebookId);
         if (!data) {
           vscode.window.showErrorMessage("PACT: notebook not found for export.");
