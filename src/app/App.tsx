@@ -108,24 +108,9 @@ function computeWordDiff(textA: string, textB: string): {
 function serializeComposer(el: HTMLDivElement): SerializedContentBlock[] {
   const blocks: SerializedContentBlock[] = [];
 
-  function collectText(node: Node): string {
-    if (node.nodeType === Node.TEXT_NODE) return node.textContent || "";
-    if ((node as HTMLElement).tagName === "BR") return "\n";
-    return Array.from(node.childNodes).map(collectText).join("");
-  }
-
-  for (const child of Array.from(el.childNodes)) {
-    const el2 = child as HTMLElement;
-
-    if (el2.tagName === "IMG") {
-      const src = el2.getAttribute("src") || "";
-      const mimeType = el2.getAttribute("data-mime") || "image/png";
-      const base64 = src.split(",")[1] || "";
-      if (base64) {
-        blocks.push({ type: "image", base64, mimeType });
-      }
-    } else {
-      const text = collectText(child);
+  function walk(node: Node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent || "";
       if (text) {
         const last = blocks[blocks.length - 1];
         if (last && last.type === "text") {
@@ -134,8 +119,29 @@ function serializeComposer(el: HTMLDivElement): SerializedContentBlock[] {
           blocks.push({ type: "text", text });
         }
       }
+    } else if ((node as HTMLElement).tagName === "IMG") {
+      const img = node as HTMLImageElement;
+      const src = img.getAttribute("src") || "";
+      const mimeType = img.getAttribute("data-mime") || "image/png";
+      const base64 = src.split(",")[1] || "";
+      if (base64) {
+        blocks.push({ type: "image", base64, mimeType });
+      }
+    } else if ((node as HTMLElement).tagName === "BR") {
+      const last = blocks[blocks.length - 1];
+      if (last && last.type === "text") {
+        last.text += "\n";
+      } else {
+        blocks.push({ type: "text", text: "\n" });
+      }
+    } else {
+      for (const child of Array.from(node.childNodes)) {
+        walk(child);
+      }
     }
   }
+
+  walk(el);
 
   return blocks.filter(b => !(b.type === "text" && !b.text.trim()));
 }

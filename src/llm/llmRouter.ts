@@ -1,12 +1,13 @@
+import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
+import type { SerializedContentBlock } from "../types/contentBlock";
+
 export type LLMModel = "gpt" | "claude";
 
 export type ImageAttachment = {
   base64: string;
   mimeType: string;
 };
-
-import OpenAI from "openai";
-import Anthropic from "@anthropic-ai/sdk";
 
 export class LLMRouter {
   private openai: OpenAI | null = null;
@@ -20,50 +21,51 @@ export class LLMRouter {
     this.claude = key ? new Anthropic({ apiKey: key }) : null;
   }
 
-
   async run(
     model: LLMModel,
     prompt: string,
     onToken?: (t: string) => void,
-    image?: ImageAttachment,
+    blocks: SerializedContentBlock[] = [],
     systemPrompt?: string,
   ): Promise<string> {
     if (model === "gpt") {
       if (!this.openai) {
         return this.error("OpenAI API key not set", onToken);
       }
-      return this.runGPT(prompt, onToken, image, systemPrompt);
+      return this.runGPT(prompt, onToken, blocks, systemPrompt);
     }
-
     if (model === "claude") {
       if (!this.claude) {
         return this.error("Claude API key not set", onToken);
       }
-      return this.runClaude(prompt, onToken, image, systemPrompt);
+      return this.runClaude(prompt, onToken, blocks, systemPrompt);
     }
-
     return this.error("Unknown model", onToken);
   }
 
   private async runGPT(
     prompt: string,
     onToken?: (t: string) => void,
-    image?: ImageAttachment,
+    blocks: SerializedContentBlock[] = [],
     systemPrompt?: string,
   ): Promise<string> {
     let full = "";
 
-    const content: OpenAI.Chat.ChatCompletionContentPart[] = [];
-    if (image) {
-      content.push({
-        type: "image_url",
-        image_url: {
-          url: `data:${image.mimeType};base64,${image.base64}`,
-        },
-      });
-    }
-
-    content.push({ type: "text", text: prompt });
+    const content: OpenAI.Chat.ChatCompletionContentPart[] = blocks.map(block => {
+      if (block.type === "image") {
+        return {
+          type: "image_url",
+          image_url: {
+            url: `data:${block.mimeType};base64,${block.base64}`,
+          },
+        } as OpenAI.Chat.ChatCompletionContentPart;
+      } else {
+        return {
+          type: "text",
+          text: block.text,
+        } as OpenAI.Chat.ChatCompletionContentPart;
+      }
+    });
 
     const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
     if (systemPrompt) {
@@ -84,35 +86,34 @@ export class LLMRouter {
         onToken?.(token);
       }
     }
-
     return full;
   }
 
   private async runClaude(
     prompt: string,
     onToken?: (t: string) => void,
-    image?: ImageAttachment,
+    blocks: SerializedContentBlock[] = [],
     systemPrompt?: string,
   ): Promise<string> {
     let full = "";
 
-    const content: Anthropic.MessageParam["content"] = [];
-
-    if (image) {
-      content.push({
-        type: "image",
-        source: {
-          type: "base64",
-          media_type: image.mimeType as
-            | "image/png"
-            | "image/jpeg"
-            | "image/webp",
-          data: image.base64,
-        },
-      });
-    }
-
-    content.push({ type: "text", text: prompt });
+    const content: Anthropic.MessageParam["content"] = blocks.map(block => {
+      if (block.type === "image") {
+        return {
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: block.mimeType as "image/png" | "image/jpeg" | "image/webp",
+            data: block.base64,
+          },
+        } as Anthropic.ImageBlockParam;
+      } else {
+        return {
+          type: "text",
+          text: block.text,
+        } as Anthropic.TextBlockParam;
+      }
+    });
 
     const stream = await this.claude!.messages.stream({
       model: "claude-sonnet-4-6",
@@ -137,12 +138,10 @@ export class LLMRouter {
 
   private async error(msg: string, onToken?: (t: string) => void) {
     const text = "ERROR: " + msg + "\n";
-
     for (const ch of text) {
       await new Promise((r) => setTimeout(r, 2));
       onToken?.(ch);
     }
-
     return text;
   }
 }

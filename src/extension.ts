@@ -6,6 +6,7 @@ import { ExecutionEngine } from "./execution/ExecutionEngine";
 import { LLMRouter } from "./llm/llmRouter";
 import { corePrompts } from "./prompts/core";
 import { NotebookStore } from "./storage/notebookStore";
+import type { SerializedContentBlock } from "./types/contentBlock";
 
 export function activate(context: vscode.ExtensionContext) {
   const panel = vscode.window.createWebviewPanel(
@@ -47,6 +48,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   const router = new LLMRouter();
   const notebookStore = new NotebookStore(context.extensionPath);
+  let userSystemPrompt: string = "";
 
   function initRouter() {
     try {
@@ -54,6 +56,13 @@ export function activate(context: vscode.ExtensionContext) {
       const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
       router.setApiKey(config.openaiApiKey);
       router.setClaudeKey(config.anthropicApiKey);
+      if (config.user) {
+        userSystemPrompt =
+          `The following is information about the user conducting this conversation:\n` +
+          `Name: ${config.user.name}\n` +
+          `Email: ${config.user.email}\n` +
+          `Context: ${config.user.context}`;
+      }
     } catch (err: any) {
       console.error("PACT: failed to load config.json:", err.message);
     }
@@ -98,25 +107,22 @@ export function activate(context: vscode.ExtensionContext) {
       // ── Execution ────────────────────────────────────────────────────────
 
       if (message.type === "RUN_REQUESTED") {
-        const blocks = message.blocks;
+        const blocks: SerializedContentBlock[] = message.blocks ?? [];
         const model = message.model ?? "gpt";
         const discussionId = message.discussionId ?? "discussion-default";
 
-        const firstText = blocks?.find((b: any) => b.type === "text")?.text?.trim() ?? "";
+        const firstText = blocks.find((b) => b.type === "text")?.text?.trim() ?? "";
         const { text, label, cellType, promptId } = resolvePrompt(firstText);
-
-        const image = blocks?.find((b: any) => b.type === "image");
 
         if (cellType === "tutorial") {
           await engine.runPrompt(
             text, undefined, label, cellType, promptId,
-            undefined, "gpt", discussionId,
+            [], "gpt", discussionId,
           );
         } else {
           await engine.runPrompt(
             text, undefined, label, cellType, promptId,
-            image ? { base64: image.base64, mimeType: image.mimeType } : undefined,
-            model, discussionId,
+            blocks, model, discussionId, userSystemPrompt,
           );
         }
       }

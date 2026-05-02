@@ -2,6 +2,7 @@ import { eventBus, CellType } from "./eventBus";
 import { LLMRouter, LLMModel } from "../llm/llmRouter";
 import { ResponseStore } from "../storage/responseStore";
 import { NotebookStore } from "../storage/notebookStore";
+import type { SerializedContentBlock } from "../types/contentBlock";
 
 export type ImageAttachment = {
   base64: string;
@@ -15,7 +16,7 @@ type Cell = {
   label?: string;
   cellType: CellType;
   promptId?: string;
-  image?: ImageAttachment;
+  blocks: SerializedContentBlock[];
   model: LLMModel;
   discussionId: string;
 };
@@ -39,7 +40,6 @@ export class ExecutionEngine {
 
   private async getSystemPrompt(discussionId: string): Promise<string | null> {
     const db = this.notebookStore;
-    // Find which notebook owns this discussion
     const notebooks = db.getAllNotebooks();
     for (const notebook of notebooks) {
       const discussions = db.getDiscussionsForNotebook(notebook.id);
@@ -56,9 +56,10 @@ export class ExecutionEngine {
     label?: string,
     cellType: CellType = "user",
     promptId?: string,
-    image?: ImageAttachment,
+    blocks: SerializedContentBlock[] = [],
     model: LLMModel = "gpt",
     discussionId: string = "discussion-default",
+    userSystemPrompt: string = "",
   ) {
     if (this.isRunning) {
       eventBus.emit({
@@ -82,7 +83,7 @@ export class ExecutionEngine {
       label: cellLabel,
       cellType,
       promptId,
-      image,
+      blocks,
       model,
       discussionId,
     };
@@ -97,24 +98,27 @@ export class ExecutionEngine {
         promptText: prompt,
       });
 
-      const systemPrompt = await this.getSystemPrompt(discussionId);
+      const notebookSystemPrompt = await this.getSystemPrompt(discussionId);
+
+      const systemPrompt = [userSystemPrompt, notebookSystemPrompt]
+        .filter(Boolean)
+        .join("\n\n") || undefined;
 
       if (cellType === "tutorial" && promptId) {
         const stored = this.store.get(promptId);
 
         if (stored && !parentId) {
-          // First load — replay from DB
           for (const char of stored.response) {
             eventBus.emit({ type: "cellStream", cellId, chunk: char });
           }
         } else {
-          // First run or retry — always save as new record
           let full = "";
           await this.router.run(model, prompt, (token) => {
             full += token;
             eventBus.emit({ type: "cellStream", cellId, chunk: token });
-          }, image, systemPrompt ?? undefined);
+          }, blocks, systemPrompt);
 
+          const image = blocks.find(b => b.type === "image") as any;
           this.store.save(
             cellId, prompt, full, model, cellType,
             image?.base64, image?.mimeType,
@@ -126,8 +130,9 @@ export class ExecutionEngine {
         await this.router.run(model, prompt, (token) => {
           full += token;
           eventBus.emit({ type: "cellStream", cellId, chunk: token });
-        }, image, systemPrompt ?? undefined);
+        }, blocks, systemPrompt);
 
+        const image = blocks.find(b => b.type === "image") as any;
         this.store.save(
           cellId, prompt, full, model, cellType,
           image?.base64, image?.mimeType,
@@ -135,9 +140,7 @@ export class ExecutionEngine {
         );
       }
 
-      // Record elapsed time
       const elapsedMs = Date.now() - startTime;
-
       this.notebookStore.addTime(discussionId, elapsedMs);
 
       eventBus.emit({
@@ -171,7 +174,7 @@ export class ExecutionEngine {
       label,
       original.cellType,
       original.promptId,
-      original.image,
+      original.blocks,
       effectiveModel,
       original.discussionId,
     );
