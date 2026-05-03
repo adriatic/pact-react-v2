@@ -100,3 +100,7 @@ tailwind.config.js
 index.html
 uninstall-beta.sh
 install-beta.sh
+beta-keys-*.json
+config.dev.json
+create-beta.sh
+setup-structure.sh
