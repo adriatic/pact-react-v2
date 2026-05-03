@@ -23,6 +23,7 @@ type Cell = {
   response: string;
   status?: string;
   elapsedMs?: number;
+  error?: string;
 };
 
 type TreeNode = Cell & {
@@ -63,7 +64,6 @@ function computeWordDiff(textA: string, textB: string): {
   const tokensA = sentencesA.map(tokenize);
   const tokensB = sentencesB.map(tokenize);
 
-  // For each sentence in A, find best match in B
   const matchedB = new Set<number>();
   const aResults: { text: string; matched: boolean }[] = sentencesA.map((s, i) => {
     let bestSim = 0;
@@ -79,7 +79,6 @@ function computeWordDiff(textA: string, textB: string): {
     return { text: s, matched: false };
   });
 
-  // Sentences in B not matched to any in A are genuinely new
   const bResults: { text: string; matched: boolean }[] = sentencesB.map((s, j) => ({
     text: s,
     matched: matchedB.has(j),
@@ -436,7 +435,7 @@ export default function App() {
           setIsRunning(false);
           setCells(prev => ({
             ...prev,
-            [data.cellId]: { ...prev[data.cellId], status: "error" },
+            [data.cellId]: { ...prev[data.cellId], status: "error", error: data.error },
           }));
           break;
       }
@@ -555,6 +554,9 @@ export default function App() {
             {node.elapsedMs !== undefined && (
               <span>⏱ {(node.elapsedMs / 1000).toFixed(1)}s</span>
             )}
+            {node.status === "error" && node.error && (
+              <span style={{ color: "#e05252" }}>{node.error}</span>
+            )}
           </div>
 
           {node.status === "done" && !diffMode && (
@@ -610,7 +612,6 @@ export default function App() {
         flexDirection: "column",
         overflow: "hidden",
       }}>
-        {/* Diff header */}
         <div style={{
           display: "flex",
           alignItems: "center",
@@ -642,9 +643,7 @@ export default function App() {
           </span>
         </div>
 
-        {/* Diff columns */}
         <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-          {/* Column A */}
           <div
             style={{
               flex: 1,
@@ -659,8 +658,6 @@ export default function App() {
             }}
             dangerouslySetInnerHTML={{ __html: htmlA }}
           />
-
-          {/* Column B */}
           <div
             style={{
               flex: 1,
@@ -691,7 +688,6 @@ export default function App() {
       overflow: "hidden",
     }}>
 
-      {/* Global styles — always rendered */}
       <style>{`
         [data-placeholder]:empty:before {
           content: attr(data-placeholder);
@@ -710,7 +706,6 @@ export default function App() {
         }
       `}</style>
 
-      {/* Explorer panel */}
       {!collapsed && (
         <div style={{ width: explorerWidth, flexShrink: 0, overflow: "hidden" }}>
           <Explorer
@@ -737,7 +732,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Draggable divider */}
       <div
         onMouseDown={onDividerMouseDown}
         onDoubleClick={() => setCollapsed(p => !p)}
@@ -753,7 +747,6 @@ export default function App() {
         onMouseLeave={e => (e.currentTarget.style.background = "#333")}
       />
 
-      {/* Main panel */}
       <div style={{
         flex: 1,
         display: "flex",
@@ -761,7 +754,6 @@ export default function App() {
         overflow: "hidden",
       }}>
 
-        {/* Fixed header */}
         <div style={{
           padding: "10px 16px",
           borderBottom: "1px solid #444",
@@ -824,7 +816,6 @@ export default function App() {
 
         {showDiff ? renderDiff() : (
           <>
-            {/* Fixed composer */}
             <div style={{
               flexShrink: 0,
               padding: "10px 16px",
@@ -961,7 +952,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Scrollable cell tree */}
             <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
               {tree.map(root => renderNode(root))}
             </div>
