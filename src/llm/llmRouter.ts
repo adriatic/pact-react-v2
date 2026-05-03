@@ -73,6 +73,7 @@ export class LLMRouter {
     }
     messages.push({ role: "user", content });
 
+
     const stream = await this.openai!.chat.completions.create({
       model: "gpt-4.1",
       messages,
@@ -86,6 +87,7 @@ export class LLMRouter {
         onToken?.(token);
       }
     }
+
     return full;
   }
 
