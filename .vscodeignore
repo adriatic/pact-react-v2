@@ -98,3 +98,5 @@ pact.code-workspace--extensionDevelopmentPath=/
 postcss.config.cjs
 tailwind.config.js
 index.html
+uninstall-beta.sh
+install-beta.sh

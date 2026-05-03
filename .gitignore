@@ -8,3 +8,5 @@ project/
 *.vsix
 .DS_Store
 *.tsbuildinfo
+beta-keys-*.json
+config.dev.json
