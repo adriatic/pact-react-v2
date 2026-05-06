@@ -8,7 +8,7 @@ import { corePrompts } from "../prompts/core";
 type LLMModel = "gpt" | "claude";
 
 type CellEvent =
-  | { type: "cellStarted"; cellId: string; parentId?: string; label?: string; cellType?: string; promptText?: string }
+  | { type: "cellStarted"; cellId: string; parentId?: string; label?: string; cellType?: string; promptText?: string; model?: string }
   | { type: "cellStream"; cellId: string; chunk: string }
   | { type: "cellCompleted"; cellId: string; elapsedMs: number }
   | { type: "discussionCellsLoaded"; cells: Cell[] }
@@ -24,6 +24,8 @@ type Cell = {
   status?: string;
   elapsedMs?: number;
   error?: string;
+  timestamp?: number;
+  model?: string;
 };
 
 type TreeNode = Cell & {
@@ -390,6 +392,8 @@ export default function App() {
               promptText: data.promptText,
               response: "",
               status: "running",
+              timestamp: Date.now(),
+              model: data.model,
             },
           }));
           break;
@@ -533,9 +537,12 @@ export default function App() {
           </div>
 
           {isRaw ? (
-            <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>
-              {node.response}
-            </pre>
+            <div style={{ fontFamily: "monospace", fontSize: "0.85em", lineHeight: 2 }}>
+              <div><span style={{ color: "#888" }}>Cell ID</span>{"  "}{node.id}</div>
+              <div><span style={{ color: "#888" }}>Model{"   "}</span>{node.label ?? "—"}</div>
+              <div><span style={{ color: "#888" }}>Time{"    "}</span>{node.timestamp ? new Date(node.timestamp).toLocaleTimeString() : "—"}</div>
+              <div><span style={{ color: "#888" }}>Latency{"  "}</span>{node.elapsedMs !== undefined ? `${(node.elapsedMs / 1000).toFixed(1)}s` : "—"}</div>
+            </div>
           ) : (
             <div
               dangerouslySetInnerHTML={{ __html: html }}
@@ -543,23 +550,25 @@ export default function App() {
             />
           )}
 
-          <div style={{
-            marginTop: 6,
-            fontSize: "0.85em",
-            color: "#888",
-            display: "flex",
-            gap: 16,
-          }}>
-            <span>Status: {node.status}</span>
-            {node.elapsedMs !== undefined && (
-              <span>⏱ {(node.elapsedMs / 1000).toFixed(1)}s</span>
-            )}
-            {node.status === "error" && node.error && (
-              <span style={{ color: "#e05252" }}>{node.error}</span>
-            )}
-          </div>
+          {!isRaw && (
+            <div style={{
+              marginTop: 6,
+              fontSize: "0.85em",
+              color: "#888",
+              display: "flex",
+              gap: 16,
+            }}>
+              <span>Status: {node.status}</span>
+              {node.elapsedMs !== undefined && (
+                <span>⏱ {(node.elapsedMs / 1000).toFixed(1)}s</span>
+              )}
+              {node.status === "error" && node.error && (
+                <span style={{ color: "#e05252" }}>{node.error}</span>
+              )}
+            </div>
+          )}
 
-          {node.status === "done" && !diffMode && (
+          {node.status === "done" && !diffMode && !isRaw && (
             <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
               <button onClick={() => retry(node.id)}>Retry</button>
               <button onClick={() => startDiff(node.id)}>Diff</button>
