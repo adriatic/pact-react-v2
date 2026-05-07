@@ -9,25 +9,20 @@ if [ -z "$1" ]; then
 fi
 
 EMAIL="$1"
+EMAIL_PREFIX="${EMAIL%%@*}"
+NAME=$(echo "$EMAIL_PREFIX" | sed 's/[._-]/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2)); print}')
 cd "$(dirname "$0")"
 
-# ── Find most recent beta-keys file ──────────────────────────────────────────
-KEYS_FILE=$(ls beta-keys-*.json 2>/dev/null | sort | tail -1)
-if [ -z "$KEYS_FILE" ]; then
-  echo "ERROR: No beta-keys-*.json file found in project root"
+# ── Read keys from config.json ────────────────────────────────────────────────
+KEYS_FILE="config.json"
+if [ ! -f "$KEYS_FILE" ]; then
+  echo "ERROR: config.json not found in project root"
   exit 1
 fi
 echo "Using keys file: $KEYS_FILE"
 
-# ── Derive name from email ────────────────────────────────────────────────────
-EMAIL_PREFIX="${EMAIL%%@*}"
-NAME=$(echo "$EMAIL_PREFIX" | sed 's/[._-]/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2)); print}')
-echo "Tester name: $NAME"
-echo "Tester email: $EMAIL"
-
-# ── Read beta keys ────────────────────────────────────────────────────────────
-OPENAI_KEY=$(node -e "console.log(require('./$KEYS_FILE').openaiApiKey)")
-ANTHROPIC_KEY=$(node -e "console.log(require('./$KEYS_FILE').anthropicApiKey)")
+OPENAI_KEY=$(node -e "console.log(require('./config.json').openaiApiKey)")
+ANTHROPIC_KEY=$(node -e "console.log(require('./config.json').anthropicApiKey)")
 
 # ── Back up dev config ────────────────────────────────────────────────────────
 cp config.json config.dev.json
@@ -59,7 +54,6 @@ echo "Packaging as $VSIX_NAME..."
 vsce package \
   --allow-missing-repository \
   --allow-star-activation \
-  --allow-package-secrets openai \
   --out "$VSIX_NAME"
 
 # ── Restore dev config ────────────────────────────────────────────────────────
