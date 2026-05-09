@@ -23,6 +23,7 @@ rsync -av \
   --exclude='pact-data/' \
   --exclude='host/' \
   --exclude='betas/' \
+  --exclude='pact.code-workspace' \
   "$SRC/" "$DEST/"
 
 echo ""
