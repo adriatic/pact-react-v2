@@ -34,21 +34,16 @@ export default function Explorer({
     discussions,
     activeDiscussionId,
     onSelectDiscussion,
-    onCreateNotebook,
     onCreateDiscussion,
     corePrompts,
     onSelectPrompt,
     onDeleteDiscussion,
     onDeleteNotebook,
     onExportNotebook,
-    onImportNotebook,
 }: Props) {
     const [expandedNotebooks, setExpandedNotebooks] = useState<Record<string, boolean>>(
         { "notebook-tutorial": true, "notebook-general": true }
     );
-
-    const [newNotebookName, setNewNotebookName] = useState("");
-    const [showNewNotebook, setShowNewNotebook] = useState(false);
 
     const [newDiscussionName, setNewDiscussionName] = useState("");
     const [newDiscussionTarget, setNewDiscussionTarget] = useState<string | null>(null);
@@ -57,14 +52,6 @@ export default function Explorer({
 
     function toggleNotebook(id: string) {
         setExpandedNotebooks(prev => ({ ...prev, [id]: !prev[id] }));
-    }
-
-    function submitNewNotebook() {
-        const name = newNotebookName.trim();
-        if (!name) return;
-        onCreateNotebook(name);
-        setNewNotebookName("");
-        setShowNewNotebook(false);
     }
 
     function submitNewDiscussion(notebookId: string) {
@@ -91,7 +78,7 @@ export default function Explorer({
             borderRight: "1px solid #333",
             overflow: "hidden",
         }}>
-            {/* Explorer header */}
+            {/* Explorer header — label only */}
             <div style={{
                 padding: "10px 12px",
                 fontSize: "0.75em",
@@ -100,43 +87,8 @@ export default function Explorer({
                 textTransform: "uppercase",
                 borderBottom: "1px solid #333",
                 flexShrink: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
             }}>
                 <span>Explorer</span>
-                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                    {/* Import notebook */}
-                    <span
-                        onClick={onImportNotebook}
-                        title="Import Notebook"
-                        style={{
-                            cursor: "pointer",
-                            fontSize: "1.4em",
-                            lineHeight: 1,
-                            color: "#555",
-                        }}
-                        onMouseEnter={e => (e.currentTarget.style.color = "#ccc")}
-                        onMouseLeave={e => (e.currentTarget.style.color = "#555")}
-                    >
-                        ⊕
-                    </span>
-                    {/* New notebook */}
-                    <span
-                        onClick={() => setShowNewNotebook(true)}
-                        title="New Notebook"
-                        style={{
-                            cursor: "pointer",
-                            fontSize: "1.6em",
-                            lineHeight: 1,
-                            color: "#555",
-                        }}
-                        onMouseEnter={e => (e.currentTarget.style.color = "#ccc")}
-                        onMouseLeave={e => (e.currentTarget.style.color = "#555")}
-                    >
-                        +
-                    </span>
-                </div>
             </div>
 
             {/* Notebook tree */}
@@ -172,7 +124,6 @@ export default function Explorer({
                                 <span style={{ flex: 1 }}>{notebook.name}</span>
                                 {hoveredId === notebook.id && !notebook.isSystem && (
                                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                                        {/* Export button */}
                                         <span
                                             onClick={e => {
                                                 e.stopPropagation();
@@ -180,35 +131,24 @@ export default function Explorer({
                                             }}
                                             title="Export notebook"
                                             style={{
-                                                color: "#555",
-                                                fontSize: "1.1em",
-                                                padding: "0 2px",
-                                                cursor: "pointer",
-                                                lineHeight: 1,
+                                                color: "#555", fontSize: "1.1em",
+                                                padding: "0 2px", cursor: "pointer", lineHeight: 1,
                                             }}
                                             onMouseEnter={e => (e.currentTarget.style.color = "#4ec94e")}
                                             onMouseLeave={e => (e.currentTarget.style.color = "#555")}
-                                        >
-                                            ↑
-                                        </span>
-                                        {/* Delete button */}
+                                        >↑</span>
                                         <span
                                             onClick={e => {
                                                 e.stopPropagation();
                                                 onDeleteNotebook(notebook.id);
                                             }}
                                             style={{
-                                                color: "#777",
-                                                fontSize: "1.1em",
-                                                padding: "0 2px",
-                                                cursor: "pointer",
-                                                lineHeight: 1,
+                                                color: "#777", fontSize: "1.1em",
+                                                padding: "0 2px", cursor: "pointer", lineHeight: 1,
                                             }}
                                             onMouseEnter={e => (e.currentTarget.style.color = "#e05252")}
                                             onMouseLeave={e => (e.currentTarget.style.color = "#777")}
-                                        >
-                                            ✕
-                                        </span>
+                                        >✕</span>
                                     </div>
                                 )}
                             </div>
@@ -260,17 +200,12 @@ export default function Explorer({
                                                             onDeleteDiscussion(discussion.id);
                                                         }}
                                                         style={{
-                                                            color: "#777",
-                                                            fontSize: "1.1em",
-                                                            padding: "0 2px",
-                                                            cursor: "pointer",
-                                                            lineHeight: 1,
+                                                            color: "#777", fontSize: "1.1em",
+                                                            padding: "0 2px", cursor: "pointer", lineHeight: 1,
                                                         }}
                                                         onMouseEnter={e => (e.currentTarget.style.color = "#e05252")}
                                                         onMouseLeave={e => (e.currentTarget.style.color = "#777")}
-                                                    >
-                                                        ✕
-                                                    </span>
+                                                    >✕</span>
                                                 )}
                                             </div>
                                         );
@@ -323,46 +258,6 @@ export default function Explorer({
                         </div>
                     );
                 })}
-            </div>
-
-            {/* Bottom actions */}
-            <div style={{
-                borderTop: "1px solid #333",
-                padding: "8px 12px",
-                flexShrink: 0,
-            }}>
-                {showNewNotebook ? (
-                    <input
-                        autoFocus
-                        value={newNotebookName}
-                        onChange={e => setNewNotebookName(e.target.value)}
-                        onKeyDown={e => {
-                            if (e.key === "Enter") submitNewNotebook();
-                            if (e.key === "Escape") setShowNewNotebook(false);
-                        }}
-                        placeholder="Notebook name..."
-                        style={{
-                            width: "100%",
-                            background: "#2d2d2d",
-                            border: "1px solid #555",
-                            borderRadius: 3,
-                            color: "#ccc",
-                            padding: "3px 6px",
-                            fontSize: "0.85em",
-                        }}
-                    />
-                ) : (
-                    <div
-                        onClick={() => setShowNewNotebook(true)}
-                        style={{
-                            color: "#555",
-                            fontSize: "0.8em",
-                            cursor: "pointer",
-                        }}
-                    >
-                        + New Notebook
-                    </div>
-                )}
             </div>
         </div>
     );

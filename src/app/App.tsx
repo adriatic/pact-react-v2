@@ -220,6 +220,8 @@ export default function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [showClearResponsesConfirm, setShowClearResponsesConfirm] = useState(false);
+  const [showNewNotebookDialog, setShowNewNotebookDialog] = useState(false);
+  const [newNotebookName, setNewNotebookName] = useState("");
 
   // Diff state
   const [diffMode, setDiffMode] = useState(false);
@@ -239,6 +241,7 @@ export default function App() {
 
   const composerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const newNotebookInputRef = useRef<HTMLInputElement>(null);
 
   function toggleRaw(cellId: string) {
     setRawCells(prev => ({ ...prev, [cellId]: !prev[cellId] }));
@@ -255,6 +258,13 @@ export default function App() {
       discussionId: explorer.activeDiscussionId,
     });
     setShowClearResponsesConfirm(false);
+  }
+
+  function submitNewNotebook() {
+    const name = newNotebookName.trim();
+    if (name) explorer.createNotebook(name);
+    setNewNotebookName("");
+    setShowNewNotebookDialog(false);
   }
 
   function closeDiff() {
@@ -294,7 +304,6 @@ export default function App() {
 
     if (blocks.length === 0) return;
 
-    // ── Resolve cell references ───────────────────────────────────────────
     blocks = blocks.map(block => {
       if (block.type === "text" && block.text.includes("[Cell ")) {
         return { ...block, text: resolveCellRefs(block.text, cells) };
@@ -494,6 +503,13 @@ export default function App() {
     setCells({});
     if (composerRef.current) composerRef.current.innerHTML = "";
   }, [explorer.activeDiscussionId]);
+
+  // Auto-focus new notebook input when dialog opens
+  useEffect(() => {
+    if (showNewNotebookDialog) {
+      setTimeout(() => newNotebookInputRef.current?.focus(), 50);
+    }
+  }, [showNewNotebookDialog]);
 
   // ── Divider drag ──────────────────────────────────────────────────────────
 
@@ -764,24 +780,15 @@ export default function App() {
         }
       `}</style>
 
-      {/* ── Warning popup ── */}
+      {/* ── Clear Responses popup ── */}
       {showClearResponsesConfirm && (
         <div style={{
-          position: "fixed",
-          inset: 0,
-          background: "rgba(0,0,0,0.6)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 100,
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)",
+          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100,
         }}>
           <div style={{
-            background: "#2d2d2d",
-            border: "1px solid #555",
-            borderRadius: 6,
-            padding: 24,
-            maxWidth: 360,
-            width: "90%",
+            background: "#2d2d2d", border: "1px solid #555", borderRadius: 6,
+            padding: 24, maxWidth: 360, width: "90%",
           }}>
             <div style={{ marginBottom: 16, lineHeight: 1.6, color: "#d4d4d4" }}>
               This will permanently delete all responses in this discussion.
@@ -791,31 +798,65 @@ export default function App() {
               <button
                 onClick={() => setShowClearResponsesConfirm(false)}
                 style={{
-                  background: "none",
-                  border: "1px solid #555",
-                  borderRadius: 4,
-                  color: "#888",
-                  cursor: "pointer",
-                  padding: "4px 16px",
-                  fontSize: "0.9em",
+                  background: "none", border: "1px solid #555", borderRadius: 4,
+                  color: "#888", cursor: "pointer", padding: "4px 16px", fontSize: "0.9em",
                 }}
-              >
-                Cancel
-              </button>
+              >Cancel</button>
               <button
                 onClick={clearResponses}
                 style={{
-                  background: "#c0392b",
-                  border: "none",
-                  borderRadius: 4,
-                  color: "#fff",
-                  cursor: "pointer",
-                  padding: "4px 16px",
-                  fontSize: "0.9em",
+                  background: "#c0392b", border: "none", borderRadius: 4,
+                  color: "#fff", cursor: "pointer", padding: "4px 16px", fontSize: "0.9em",
                 }}
-              >
-                Clear Responses
-              </button>
+              >Clear Responses</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── New Notebook popup ── */}
+      {showNewNotebookDialog && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)",
+          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100,
+        }}>
+          <div style={{
+            background: "#2d2d2d", border: "1px solid #555", borderRadius: 6,
+            padding: 24, maxWidth: 360, width: "90%",
+          }}>
+            <div style={{ marginBottom: 12, color: "#d4d4d4", fontSize: "0.95em" }}>
+              New Notebook
+            </div>
+            <input
+              ref={newNotebookInputRef}
+              value={newNotebookName}
+              onChange={e => setNewNotebookName(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter") submitNewNotebook();
+                if (e.key === "Escape") { setShowNewNotebookDialog(false); setNewNotebookName(""); }
+              }}
+              placeholder="Notebook name..."
+              style={{
+                width: "100%", background: "#1e1e1e", border: "1px solid #555",
+                borderRadius: 4, color: "#d4d4d4", padding: "6px 10px",
+                fontSize: "0.9em", marginBottom: 16, boxSizing: "border-box",
+              }}
+            />
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button
+                onClick={() => { setShowNewNotebookDialog(false); setNewNotebookName(""); }}
+                style={{
+                  background: "none", border: "1px solid #555", borderRadius: 4,
+                  color: "#888", cursor: "pointer", padding: "4px 16px", fontSize: "0.9em",
+                }}
+              >Cancel</button>
+              <button
+                onClick={submitNewNotebook}
+                style={{
+                  background: "#0e639c", border: "none", borderRadius: 4,
+                  color: "#fff", cursor: "pointer", padding: "4px 16px", fontSize: "0.9em",
+                }}
+              >Create</button>
             </div>
           </div>
         </div>
@@ -852,115 +893,82 @@ export default function App() {
         onDoubleClick={() => setCollapsed(p => !p)}
         title="Drag to resize, double-click to collapse"
         style={{
-          width: 4,
-          cursor: "col-resize",
-          background: "#333",
-          flexShrink: 0,
-          transition: "background 0.2s",
+          width: 4, cursor: "col-resize", background: "#333",
+          flexShrink: 0, transition: "background 0.2s",
         }}
         onMouseEnter={e => (e.currentTarget.style.background = "#0e639c")}
         onMouseLeave={e => (e.currentTarget.style.background = "#333")}
       />
 
-      <div style={{
-        flex: 1,
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
-      }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
 
+        {/* ── Line 1: global menu bar ── */}
         <div style={{
-          padding: "10px 16px",
-          borderBottom: "1px solid #444",
-          flexShrink: 0,
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
+          padding: "8px 16px", borderBottom: "1px solid #333",
+          flexShrink: 0, display: "flex", alignItems: "center", gap: 10,
         }}>
           <h2 style={{ margin: 0, fontSize: "1.1em" }}>PACT</h2>
-          <button
-            onClick={clearView}
-            title="Clear view"
-            style={{
-              background: "none",
-              border: "1px solid #555",
-              borderRadius: 4,
-              color: "#888",
-              cursor: "pointer",
-              padding: "2px 10px",
-              fontSize: "0.85em",
-            }}
-          >
-            Clear
-          </button>
+          <button onClick={clearView} title="Clear view" style={{
+            background: "none", border: "1px solid #555", borderRadius: 4,
+            color: "#888", cursor: "pointer", padding: "2px 10px", fontSize: "0.85em",
+          }}>Clear</button>
           {explorer.activeDiscussionId && (
-            <button
-              onClick={() => setShowClearResponsesConfirm(true)}
-              title="Delete all responses for this discussion"
-              style={{
-                background: "none",
-                border: "1px solid #555",
-                borderRadius: 4,
-                color: "#888",
-                cursor: "pointer",
-                padding: "2px 10px",
-                fontSize: "0.85em",
-              }}
-            >
-              Clear Responses
-            </button>
+            <button onClick={() => setShowClearResponsesConfirm(true)} style={{
+              background: "none", border: "1px solid #555", borderRadius: 4,
+              color: "#888", cursor: "pointer", padding: "2px 10px", fontSize: "0.85em",
+            }}>Clear Responses</button>
           )}
+          <button onClick={() => setShowNewNotebookDialog(true)} style={{
+            background: "none", border: "1px solid #555", borderRadius: 4,
+            color: "#888", cursor: "pointer", padding: "2px 10px", fontSize: "0.85em",
+          }}>+ Notebook</button>
+          <button onClick={explorer.importNotebook} style={{
+            background: "none", border: "1px solid #555", borderRadius: 4,
+            color: "#888", cursor: "pointer", padding: "2px 10px", fontSize: "0.85em",
+          }}>Import</button>
           {diffMode && (
             <button
               onClick={() => { setDiffMode(false); setDiffCellA(null); }}
               style={{
-                background: "none",
-                border: "1px solid #e05252",
-                borderRadius: 4,
-                color: "#e05252",
-                cursor: "pointer",
-                padding: "2px 10px",
-                fontSize: "0.85em",
+                background: "none", border: "1px solid #e05252", borderRadius: 4,
+                color: "#e05252", cursor: "pointer", padding: "2px 10px", fontSize: "0.85em",
               }}
-            >
-              Cancel Diff
-            </button>
+            >Cancel Diff</button>
           )}
+        </div>
+
+        {/* ── Line 2: context bar ── */}
+        <div style={{
+          padding: "5px 16px", borderBottom: "1px solid #444",
+          flexShrink: 0, display: "flex", alignItems: "center",
+          justifyContent: "space-between",
+        }}>
+          <span style={{ color: "#888", fontSize: "0.85em" }}>
+            {explorer.activeDiscussionId
+              ? (explorer.discussions.find(d => d.id === explorer.activeDiscussionId)?.name ?? "")
+              : ""}
+          </span>
           <div
             title={isRunning ? "Running" : "Idle"}
             style={{
-              width: 10,
-              height: 10,
-              borderRadius: "50%",
+              width: 10, height: 10, borderRadius: "50%",
               background: isRunning ? "#e05252" : "#4ec94e",
               boxShadow: isRunning ? "0 0 6px #e05252" : "0 0 6px #4ec94e",
               transition: "background 0.3s, box-shadow 0.3s",
             }}
           />
-          {explorer.activeDiscussionId && (
-            <span style={{ color: "#888", fontSize: "0.85em" }}>
-              {explorer.discussions.find(
-                d => d.id === explorer.activeDiscussionId
-              )?.name ?? ""}
-            </span>
-          )}
         </div>
 
         {showDiff ? renderDiff() : (
           <>
-            <div style={{
-              flexShrink: 0,
-              padding: "10px 16px",
-              borderBottom: "1px solid #444",
-            }}>
+            <div style={{ flexShrink: 0, padding: "10px 16px", borderBottom: "1px solid #444" }}>
               <div
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
                 style={{
                   border: isDragging ? "2px dashed #888" : "1px solid #666",
-                  borderRadius: 6,
-                  background: "#1e1e1e",
+                  borderRadius: 6, background: "#1e1e1e",
                 }}
               >
                 <div
@@ -969,39 +977,26 @@ export default function App() {
                   suppressContentEditableWarning
                   onKeyDown={handleKeyDown}
                   style={{
-                    minHeight: 60,
-                    maxHeight: 200,
-                    overflowY: "auto",
-                    padding: "10px 12px",
-                    outline: "none",
-                    whiteSpace: "pre-wrap",
-                    lineHeight: 1.6,
-                    color: "#d4d4d4",
+                    minHeight: 60, maxHeight: 200, overflowY: "auto",
+                    padding: "10px 12px", outline: "none",
+                    whiteSpace: "pre-wrap", lineHeight: 1.6, color: "#d4d4d4",
                   }}
                   data-placeholder="Enter prompt — Cmd+V to paste image, Cmd+Enter to send"
                 />
 
                 <div style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  padding: "6px 10px",
-                  borderTop: "1px solid #444",
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "6px 10px", borderTop: "1px solid #444",
                 }}>
                   <div style={{ display: "flex", gap: 8 }}>
                     <button
                       onClick={() => fileInputRef.current?.click()}
                       title="Attach image"
                       style={{
-                        background: "none",
-                        border: "none",
-                        color: "#888",
-                        cursor: "pointer",
-                        fontSize: "1.1em",
+                        background: "none", border: "none", color: "#888",
+                        cursor: "pointer", fontSize: "1.1em",
                       }}
-                    >
-                      +
-                    </button>
+                    >+</button>
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -1016,13 +1011,8 @@ export default function App() {
                       <button
                         onClick={() => setModelOpen(p => !p)}
                         style={{
-                          background: "none",
-                          border: "1px solid #555",
-                          borderRadius: 4,
-                          color: "#ccc",
-                          cursor: "pointer",
-                          padding: "2px 10px",
-                          fontSize: "0.85em",
+                          background: "none", border: "1px solid #555", borderRadius: 4,
+                          color: "#ccc", cursor: "pointer", padding: "2px 10px", fontSize: "0.85em",
                         }}
                       >
                         {model === "gpt" ? "GPT-4.1" : "Claude"} ▾
@@ -1030,26 +1020,17 @@ export default function App() {
 
                       {modelOpen && (
                         <div style={{
-                          position: "absolute",
-                          bottom: "110%",
-                          right: 0,
-                          background: "#2d2d2d",
-                          border: "1px solid #555",
-                          borderRadius: 4,
-                          minWidth: 130,
-                          zIndex: 10,
+                          position: "absolute", bottom: "110%", right: 0,
+                          background: "#2d2d2d", border: "1px solid #555",
+                          borderRadius: 4, minWidth: 130, zIndex: 10,
                         }}>
                           {(["gpt", "claude"] as LLMModel[]).map(m => (
                             <div
                               key={m}
                               onClick={() => { setModel(m); setModelOpen(false); }}
                               style={{
-                                padding: "6px 12px",
-                                cursor: "pointer",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 8,
-                                color: "#ccc",
+                                padding: "6px 12px", cursor: "pointer",
+                                display: "flex", alignItems: "center", gap: 8, color: "#ccc",
                               }}
                             >
                               <span style={{ opacity: model === m ? 1 : 0 }}>✓</span>
@@ -1064,21 +1045,11 @@ export default function App() {
                       onClick={send}
                       title="Send (Cmd+Enter)"
                       style={{
-                        background: "#0e639c",
-                        border: "none",
-                        borderRadius: "50%",
-                        width: 32,
-                        height: 32,
-                        cursor: "pointer",
-                        color: "#fff",
-                        fontSize: "1em",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
+                        background: "#0e639c", border: "none", borderRadius: "50%",
+                        width: 32, height: 32, cursor: "pointer", color: "#fff",
+                        fontSize: "1em", display: "flex", alignItems: "center", justifyContent: "center",
                       }}
-                    >
-                      ↑
-                    </button>
+                    >↑</button>
                   </div>
                 </div>
               </div>
