@@ -14,6 +14,7 @@ type CellEvent =
   | { type: "discussionCellsLoaded"; cells: Cell[] }
   | { type: "discussionDeleted"; discussionId: string }
   | { type: "responsesCleared" }
+  | { type: "draftLoaded"; discussionId: string; promptText: string | null }
   | { type: "cellError"; cellId: string; error: string };
 
 type Cell = {
@@ -242,6 +243,7 @@ export default function App() {
   const composerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const newNotebookInputRef = useRef<HTMLInputElement>(null);
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function toggleRaw(cellId: string) {
     setRawCells(prev => ({ ...prev, [cellId]: !prev[cellId] }));
@@ -289,6 +291,25 @@ export default function App() {
     sel?.addRange(range);
   }
 
+  // ── Draft auto-save on composer input ─────────────────────────────────────
+
+  function handleComposerInput() {
+    if (!explorer.activeDiscussionId) return;
+    const el = composerRef.current;
+    if (!el) return;
+    const text = el.innerText?.trim();
+    if (!text) return;
+
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = setTimeout(() => {
+      vscode.postMessage({
+        type: "SAVE_DRAFT",
+        discussionId: explorer.activeDiscussionId,
+        promptText: text,
+      });
+    }, 1000);
+  }
+
   // ── Send ──────────────────────────────────────────────────────────────────
 
   function send() {
@@ -310,6 +331,14 @@ export default function App() {
       }
       return block;
     });
+
+    // Delete draft on send
+    if (explorer.activeDiscussionId) {
+      vscode.postMessage({
+        type: "DELETE_DRAFT",
+        discussionId: explorer.activeDiscussionId,
+      });
+    }
 
     vscode.postMessage({
       type: "RUN_REQUESTED",
@@ -485,6 +514,12 @@ export default function App() {
           setCells({});
           break;
 
+        case "draftLoaded":
+          if (data.promptText) {
+            populateComposer(data.promptText);
+          }
+          break;
+
         case "cellError":
           setIsRunning(false);
           setCells(prev => ({
@@ -499,9 +534,17 @@ export default function App() {
     return () => window.removeEventListener("message", handler);
   }, []);
 
+  // ── On discussion change: clear cells, clear composer, request draft ──────
+
   useEffect(() => {
     setCells({});
     if (composerRef.current) composerRef.current.innerHTML = "";
+    if (explorer.activeDiscussionId) {
+      vscode.postMessage({
+        type: "GET_DRAFT",
+        discussionId: explorer.activeDiscussionId,
+      });
+    }
   }, [explorer.activeDiscussionId]);
 
   // Auto-focus new notebook input when dialog opens
@@ -908,7 +951,7 @@ export default function App() {
           flexShrink: 0, display: "flex", alignItems: "center", gap: 10,
         }}>
           <h2 style={{ margin: 0, fontSize: "1.1em" }}>PACT</h2>
-          <button onClick={clearView} title="Clear view" style={{
+          <button onClick={clearView} style={{
             background: "none", border: "1px solid #555", borderRadius: 4,
             color: "#888", cursor: "pointer", padding: "2px 10px", fontSize: "0.85em",
           }}>Clear</button>
@@ -976,6 +1019,7 @@ export default function App() {
                   contentEditable
                   suppressContentEditableWarning
                   onKeyDown={handleKeyDown}
+                  onInput={handleComposerInput}
                   style={{
                     minHeight: 60, maxHeight: 200, overflowY: "auto",
                     padding: "10px 12px", outline: "none",

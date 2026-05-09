@@ -98,9 +98,9 @@ const migrations: Migration[] = [
   `,
   },
   {
-  version: 7,
-  description: "Seed all tutorial discussions from corePrompts",
-  sql: `
+    version: 7,
+    description: "Seed all tutorial discussions from corePrompts",
+    sql: `
     UPDATE discussions
     SET id = 'discussion-tutorial-00', name = 'Getting Started'
     WHERE id = 'discussion-default';
@@ -123,7 +123,15 @@ const migrations: Migration[] = [
       ('discussion-tutorial-14', 'notebook-tutorial', NULL, 'Why is this not an agentic system?', ${Date.now()}, 0),
       ('discussion-tutorial-15', 'notebook-tutorial', NULL, 'What does PACT become?', ${Date.now()}, 0);
   `,
-},
+  },
+  {
+    version: 8,
+    description: "Add Drafts system notebook",
+    sql: `
+      INSERT OR IGNORE INTO notebooks (id, name, is_system, created_at)
+      VALUES ('notebook-drafts', 'Drafts', 1, ${Date.now()});
+    `,
+  },
 ];
 
 function getSchemaVersion(database: Database.Database): number {

@@ -179,12 +179,32 @@ export function activate(context: vscode.ExtensionContext) {
         panel.webview.postMessage({ type: "responsesCleared" });
       }
 
+      if (message.type === "SAVE_DRAFT") {
+        notebookStore.saveDraft(message.discussionId, message.promptText);
+      }
+
+      if (message.type === "GET_DRAFT") {
+        const draft = notebookStore.getDraft(message.discussionId);
+        panel.webview.postMessage({ type: "draftLoaded", discussionId: message.discussionId, promptText: draft });
+      }
+
+      if (message.type === "DELETE_DRAFT") {
+        notebookStore.deleteDraft(message.discussionId);
+      }
+
       // ── Export ────────────────────────────────────────────────────────────
 
       if (message.type === "EXPORT_NOTEBOOK") {
         const data = notebookStore.exportNotebook(message.notebookId);
         if (!data) {
           vscode.window.showErrorMessage("PACT: notebook not found for export.");
+          return;
+        }
+
+        if (data.cells.length === 0) {
+          vscode.window.showWarningMessage(
+            `PACT: "${data.notebook.name}" has no responses to export.`
+          );
           return;
         }
 

@@ -54,7 +54,7 @@ export class NotebookStore {
     const db = getDb(this.extensionPath);
 
     const rows = db
-      .prepare("SELECT * FROM notebooks ORDER BY is_system DESC, name ASC")
+      .prepare("SELECT * FROM notebooks ORDER BY CASE id WHEN 'notebook-tutorial' THEN 0 WHEN 'notebook-drafts' THEN 1 ELSE 2 END, name ASC")
       .all() as any[];
 
     return rows.map(r => ({
@@ -161,6 +161,50 @@ export class NotebookStore {
   clearResponses(discussionId: string): void {
     const db = getDb(this.extensionPath);
     db.prepare("DELETE FROM responses WHERE discussion_id = ?").run(discussionId);
+  }
+
+  // ── Drafts ────────────────────────────────────────────────────────────────
+
+  saveDraft(discussionId: string, promptText: string): void {
+    const db = getDb(this.extensionPath);
+    const draftId = `draft-${discussionId}`;
+
+    // Ensure a discussion record exists in the Drafts notebook for this discussion
+    const existing = db
+      .prepare("SELECT id FROM discussions WHERE id = ?")
+      .get(draftId) as { id: string } | undefined;
+
+    if (!existing) {
+      db.prepare(`
+        INSERT INTO discussions (id, notebook_id, parent_id, name, created_at, total_time_ms)
+        VALUES (?, 'notebook-drafts', NULL, ?, ?, 0)
+      `).run(draftId, discussionId, Date.now());
+    }
+
+    // Upsert the draft response record
+    db.prepare(`
+      INSERT OR REPLACE INTO responses
+        (prompt_id, prompt_text, response, model, cell_type, created_at, discussion_id, parent_id)
+      VALUES (?, ?, '', 'gpt', 'draft', ?, ?, NULL)
+    `).run(draftId, promptText, Date.now(), draftId);
+  }
+
+  getDraft(discussionId: string): string | null {
+    const db = getDb(this.extensionPath);
+    const draftId = `draft-${discussionId}`;
+
+    const row = db
+      .prepare("SELECT prompt_text FROM responses WHERE prompt_id = ?")
+      .get(draftId) as { prompt_text: string } | undefined;
+
+    return row?.prompt_text ?? null;
+  }
+
+  deleteDraft(discussionId: string): void {
+    const db = getDb(this.extensionPath);
+    const draftId = `draft-${discussionId}`;
+    db.prepare("DELETE FROM responses WHERE prompt_id = ?").run(draftId);
+    db.prepare("DELETE FROM discussions WHERE id = ?").run(draftId);
   }
 
   addTime(discussionId: string, elapsedMs: number): void {
