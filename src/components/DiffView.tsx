@@ -1,3 +1,4 @@
+// Copyright © 2026 Pact Research LLC. All rights reserved.\n// pactresearch.net
 type Props = {
   left: string;
   right: string;

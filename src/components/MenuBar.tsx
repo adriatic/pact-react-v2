@@ -1,3 +1,4 @@
+// Copyright © 2026 Pact Research LLC. All rights reserved.\n// pactresearch.net
 import { useEffect, useRef, useState } from "react";
 
 type Props = {

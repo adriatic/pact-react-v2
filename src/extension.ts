@@ -1,3 +1,4 @@
+// Copyright © 2026 Pact Research LLC. All rights reserved.\n// pactresearch.net
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";

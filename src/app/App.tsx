@@ -1,3 +1,4 @@
+// Copyright © 2026 Pact Research LLC. All rights reserved.\n// pactresearch.net
 import React, { useEffect, useRef, useState } from "react";
 import { marked } from "marked";
 import type { SerializedContentBlock } from "../types/contentBlock";

@@ -1,3 +1,4 @@
+// Copyright © 2026 Pact Research LLC. All rights reserved.\n// pactresearch.net
 import React, { useState } from "react";
 
 export type Notebook = {

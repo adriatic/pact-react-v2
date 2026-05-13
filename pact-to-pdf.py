@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright © 2026 Pact Research LLC. All rights reserved.
+# pactresearch.net
 """
 pact-to-pdf.py - Converts a PACT .pact notebook export to a readable PDF.
 Usage: python3 pact-to-pdf.py <input.pact> [output.pdf]
