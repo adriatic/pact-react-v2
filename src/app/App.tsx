@@ -246,6 +246,10 @@ export default function App() {
   const newNotebookInputRef = useRef<HTMLInputElement>(null);
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Whether a discussion is active and writable
+  const hasActiveDiscussion = !!explorer.activeDiscussionId &&
+    !explorer.activeDiscussionId.startsWith("discussion-tutorial-");
+
   function toggleRaw(cellId: string) {
     setRawCells(prev => ({ ...prev, [cellId]: !prev[cellId] }));
   }
@@ -328,6 +332,7 @@ export default function App() {
   // ── Send ──────────────────────────────────────────────────────────────────
 
   function send() {
+    if (!hasActiveDiscussion) return;
     const el = composerRef.current;
     if (!el) return;
 
@@ -639,31 +644,29 @@ export default function App() {
             <strong>{node.label || "GPT"}</strong>
             <div style={{ display: "flex", gap: 6 }}>
               {node.status === "done" && (
-                <button
-                  onClick={() => copyCell(node)}
-                  title="Copy as markdown"
-                  style={{
-                    fontSize: "0.75em",
-                    padding: "2px 8px",
-                    background: isCopied ? "#1D9E75" : undefined,
-                    color: isCopied ? "#fff" : undefined,
-                    border: isCopied ? "1px solid #1D9E75" : undefined,
-                    borderRadius: 3,
-                    transition: "background 0.2s, color 0.2s",
-                  }}
-                >
-                  {isCopied ? "Copied ✓" : "Copy"}
-                </button>
-              )}
-
-              {node.status === "done" && (
-                <button
-                  onClick={() => navigator.clipboard.writeText(`[Cell ${node.id}]`)}
-                  title="Copy cell reference"
-                  style={{ fontSize: "0.75em", padding: "2px 8px" }}
-                >
-                  Copy Ref
-                </button>
+                <>
+                  <button
+                    onClick={() => copyCell(node)}
+                    title="Copy as shareable markdown"
+                    style={{
+                      fontSize: "0.75em", padding: "2px 8px",
+                      background: isCopied ? "#1D9E75" : undefined,
+                      color: isCopied ? "#fff" : undefined,
+                      border: isCopied ? "1px solid #1D9E75" : undefined,
+                      borderRadius: 3,
+                      transition: "background 0.2s, color 0.2s",
+                    }}
+                  >
+                    {isCopied ? "Copied ✓" : "Copy"}
+                  </button>
+                  <button
+                    onClick={() => navigator.clipboard.writeText(`[Cell ${node.id}]`)}
+                    title="Copy cell reference"
+                    style={{ fontSize: "0.75em", padding: "2px 8px" }}
+                  >
+                    Copy Ref
+                  </button>
+                </>
               )}
               <button
                 onClick={() => toggleRaw(node.id)}
@@ -698,11 +701,7 @@ export default function App() {
 
           {!isRaw && (
             <div style={{
-              marginTop: 6,
-              fontSize: "0.85em",
-              color: "#888",
-              display: "flex",
-              gap: 16,
+              marginTop: 6, fontSize: "0.85em", color: "#888", display: "flex", gap: 16,
             }}>
               <span>Status: {node.status}</span>
               {node.elapsedMs !== undefined && (
@@ -731,14 +730,8 @@ export default function App() {
             <button
               onClick={() => selectDiffB(node.id)}
               style={{
-                marginTop: 6,
-                background: "#0e639c",
-                border: "none",
-                borderRadius: 3,
-                color: "#fff",
-                cursor: "pointer",
-                padding: "3px 10px",
-                fontSize: "0.8em",
+                marginTop: 6, background: "#0e639c", border: "none", borderRadius: 3,
+                color: "#fff", cursor: "pointer", padding: "3px 10px", fontSize: "0.8em",
               }}
             >
               Compare
@@ -809,6 +802,19 @@ export default function App() {
         }
         span.diff-del { background: #5c1a1a; color: #ff9999; border-radius: 2px; }
         span.diff-ins { background: #1a3a1a; color: #99ff99; border-radius: 2px; }
+        .composer-disabled {
+          min-height: 60px;
+          max-height: 200px;
+          padding: 10px 12px;
+          color: #555;
+          font-style: italic;
+          font-size: 0.9em;
+          display: flex;
+          align-items: center;
+          user-select: none;
+          cursor: default;
+        }
+        .composer-disabled:focus { outline: none; }
       `}</style>
 
       {/* ── Clear Responses popup ── */}
@@ -994,27 +1000,37 @@ export default function App() {
           <>
             <div style={{ flexShrink: 0, padding: "10px 16px", borderBottom: "1px solid #444" }}>
               <div
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
+                onDragOver={hasActiveDiscussion ? handleDragOver : undefined}
+                onDragLeave={hasActiveDiscussion ? handleDragLeave : undefined}
+                onDrop={hasActiveDiscussion ? handleDrop : undefined}
                 style={{
-                  border: isDragging ? "2px dashed #888" : "1px solid #666",
-                  borderRadius: 6, background: "#1e1e1e",
+                  border: isDragging ? "2px dashed #888" : "1px solid #444",
+                  borderRadius: 6,
+                  background: hasActiveDiscussion ? "#1e1e1e" : "#161616",
                 }}
               >
-                <div
-                  ref={composerRef}
-                  contentEditable
-                  suppressContentEditableWarning
-                  onKeyDown={handleKeyDown}
-                  onInput={handleComposerInput}
-                  style={{
-                    minHeight: 60, maxHeight: 200, overflowY: "auto",
-                    padding: "10px 12px", outline: "none",
-                    whiteSpace: "pre-wrap", lineHeight: 1.6, color: "#d4d4d4",
-                  }}
-                  data-placeholder="Enter prompt — Cmd+V to paste image, Cmd+Enter to send"
-                />
+                {hasActiveDiscussion ? (
+                  <div
+                    ref={composerRef}
+                    contentEditable
+                    suppressContentEditableWarning
+                    onKeyDown={handleKeyDown}
+                    onInput={handleComposerInput}
+                    style={{
+                      minHeight: 60, maxHeight: 200, overflowY: "auto",
+                      padding: "10px 12px", outline: "none",
+                      whiteSpace: "pre-wrap", lineHeight: 1.6, color: "#d4d4d4",
+                    }}
+                    data-placeholder="Enter prompt — Cmd+V to paste image, Cmd+Enter to send"
+                  />
+                ) : (
+                  <div
+                    className="composer-disabled"
+                    onClick={() => {/* do nothing */ }}
+                  >
+                    Select or create a discussion to start researching.
+                  </div>
+                )}
 
                 <div style={{
                   display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -1022,9 +1038,14 @@ export default function App() {
                 }}>
                   <div style={{ display: "flex", gap: 8 }}>
                     <button
-                      onClick={() => fileInputRef.current?.click()}
+                      onClick={() => hasActiveDiscussion && fileInputRef.current?.click()}
                       title="Attach image"
-                      style={{ background: "none", border: "none", color: "#888", cursor: "pointer", fontSize: "1.1em" }}
+                      style={{
+                        background: "none", border: "none",
+                        color: hasActiveDiscussion ? "#888" : "#444",
+                        cursor: hasActiveDiscussion ? "pointer" : "default",
+                        fontSize: "1.1em",
+                      }}
                     >+</button>
                     <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp"
                       style={{ display: "none" }} onChange={handleFileInput} />
@@ -1056,11 +1077,18 @@ export default function App() {
                         </div>
                       )}
                     </div>
-                    <button onClick={send} title="Send (Cmd+Enter)" style={{
-                      background: "#0e639c", border: "none", borderRadius: "50%",
-                      width: 32, height: 32, cursor: "pointer", color: "#fff",
-                      fontSize: "1em", display: "flex", alignItems: "center", justifyContent: "center",
-                    }}>↑</button>
+                    <button
+                      onClick={send}
+                      title={hasActiveDiscussion ? "Send (Cmd+Enter)" : "Select a discussion first"}
+                      style={{
+                        background: hasActiveDiscussion ? "#0e639c" : "#333",
+                        border: "none", borderRadius: "50%",
+                        width: 32, height: 32,
+                        cursor: hasActiveDiscussion ? "pointer" : "default",
+                        color: hasActiveDiscussion ? "#fff" : "#555",
+                        fontSize: "1em", display: "flex", alignItems: "center", justifyContent: "center",
+                      }}
+                    >↑</button>
                   </div>
                 </div>
               </div>
